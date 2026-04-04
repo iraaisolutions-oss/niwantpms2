@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../lib/api';
-import { ArrowLeft, SignOut, CurrencyInr, Receipt, WhatsappLogo, Broom } from '@phosphor-icons/react';
+import { ArrowLeft, SignOut, CurrencyInr, Receipt, WhatsappLogo, Broom, FilePdf, CurrencyCircleDollar } from '@phosphor-icons/react';
 
 export default function RoomDetailPage() {
   const { t, lang } = useLanguage();
@@ -220,6 +220,76 @@ export default function RoomDetailPage() {
                 WiFi
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Quick Actions: Invoice + Add Advance */}
+        {booking && (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={async () => {
+                try {
+                  const { data } = await api.get(`/bookings/${booking.booking_id}/invoice`);
+                  // Generate printable invoice
+                  const win = window.open('', '_blank');
+                  if (win) {
+                    win.document.write(`
+                      <html><head><title>Invoice ${data.invoice_id}</title>
+                      <style>body{font-family:sans-serif;padding:20px;max-width:400px;margin:auto}
+                      h1{font-size:18px}table{width:100%;border-collapse:collapse}
+                      td{padding:4px 0;border-bottom:1px solid #eee}
+                      .total{font-weight:bold;font-size:18px;border-top:2px solid #000}
+                      .header{text-align:center;margin-bottom:20px}</style></head><body>
+                      <div class="header"><h1>Digital Register Hotel</h1><p>Invoice: ${data.invoice_id}</p></div>
+                      <table>
+                      <tr><td>Guest</td><td>${data.guest?.name || ''}</td></tr>
+                      <tr><td>Room</td><td>${data.room_number}</td></tr>
+                      <tr><td>Check-in</td><td>${new Date(data.check_in).toLocaleString('en-IN')}</td></tr>
+                      <tr><td>Check-out</td><td>${data.check_out ? new Date(data.check_out).toLocaleString('en-IN') : 'Active'}</td></tr>
+                      <tr><td>Rate/Day</td><td>₹${data.rate_per_day}</td></tr>
+                      <tr><td>Guests</td><td>${data.num_guests}</td></tr>
+                      ${data.billing ? `<tr><td>Days</td><td>${data.billing.total_days}</td></tr>
+                      <tr><td>Room Charge</td><td>₹${data.billing.room_charge}</td></tr>
+                      ${data.billing.extra_guest_charge ? `<tr><td>Extra Guests</td><td>₹${data.billing.extra_guest_charge}</td></tr>` : ''}` : ''}
+                      <tr><td>Additional</td><td>₹${data.additional_charges || 0}</td></tr>
+                      <tr><td>Discount</td><td>-₹${data.discount || 0}</td></tr>
+                      <tr class="total"><td>Total</td><td>₹${data.total_amount}</td></tr>
+                      <tr><td>Paid</td><td>₹${data.total_paid}</td></tr>
+                      <tr style="color:red"><td>Balance</td><td>₹${data.balance_due}</td></tr>
+                      </table>
+                      <p style="text-align:center;margin-top:20px;font-size:12px;color:#999">Thank you for your stay!</p>
+                      </body></html>
+                    `);
+                    win.document.close();
+                    win.print();
+                  }
+                } catch (err) { console.error(err); }
+              }}
+              className="h-14 rounded-xl border-2 border-zinc-200 bg-white font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              data-testid="invoice-btn"
+            >
+              <FilePdf size={20} weight="bold" />
+              {lang === 'mr' ? 'बिल प्रिंट' : 'Print Invoice'}
+            </button>
+            <button
+              onClick={async () => {
+                const amt = prompt(lang === 'mr' ? 'ॲडव्हान्स रक्कम:' : 'Advance amount:');
+                if (!amt || isNaN(amt)) return;
+                try {
+                  await api.post('/bookings/advance', {
+                    booking_id: booking.booking_id,
+                    amount: parseFloat(amt),
+                    payment_method: 'cash'
+                  });
+                  fetchRoomData();
+                } catch (err) { console.error(err); }
+              }}
+              className="h-14 rounded-xl border-2 border-[#22C55E] bg-[#DCFCE7] text-[#14532D] font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              data-testid="add-advance-btn"
+            >
+              <CurrencyCircleDollar size={20} weight="bold" />
+              {t('add_advance')}
+            </button>
           </div>
         )}
 

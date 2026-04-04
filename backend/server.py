@@ -135,6 +135,19 @@ class AdvanceInput(BaseModel):
     amount: float
     payment_method: str = "cash"
 
+class ShiftHandoverInput(BaseModel):
+    staff_name: Optional[str] = None
+    notes: Optional[str] = None
+
+class QRRequestInput(BaseModel):
+    room_number: int
+    request_type: str  # water, cleaning, bill, towel, other
+    details: Optional[str] = None
+    guest_name: Optional[str] = None
+
+class VoiceExpenseInput(BaseModel):
+    text: str  # e.g., "100 rupaye laundry"
+
 # ---------- AUTH ROUTES ----------
 @api_router.post("/auth/register")
 async def register(input: AuthInput, response: Response):
@@ -746,6 +759,317 @@ async def get_all_bookings(request: Request, status: Optional[str] = None):
         query["status"] = status
     bookings = await db.bookings.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
     return bookings
+
+# ---------- SHIFT HANDOVER / REMOTE CASHBOX ----------
+@api_router.post("/galla/shift-handover")
+async def shift_handover(input: ShiftHandoverInput, request: Request):
+    user = await get_current_user(request)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    txns = await db.transactions.find({"timestamp": {"$regex": f"^{today}"}}, {"_id": 0}).to_list(1000)
+    expenses = await db.expenses.find({"timestamp": {"$regex": f"^{today}"}}, {"_id": 0}).to_list(500)
+    rooms = await db.rooms.find({}, {"_id": 0}).to_list(100)
+    
+    cash_total = sum(t["amount"] for t in txns if t.get("type") == "cash")
+    upi_total = sum(t["amount"] for t in txns if t.get("type") == "upi")
+    expense_total = sum(e["amount"] for e in expenses)
+    occupied = sum(1 for r in rooms if r["status"] == "occupied")
+    
+    summary = {
+        "handover_id": f"SH-{secrets.token_hex(4).upper()}",
+        "date": today,
+        "staff_name": input.staff_name or user.get("name", "unknown"),
+        "cash_collected": cash_total,
+        "upi_collected": upi_total,
+        "total_collected": cash_total + upi_total,
+        "total_expenses": expense_total,
+        "net_amount": cash_total + upi_total - expense_total,
+        "rooms_occupied": occupied,
+        "rooms_total": len(rooms),
+        "transaction_count": len(txns),
+        "expense_count": len(expenses),
+        "notes": input.notes or "",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "handed_over_by": user.get("name")
+    }
+    
+    await db.shift_handovers.insert_one({**summary})
+    summary.pop("_id", None)
+    
+    # Mock WhatsApp to owner
+    owner = await db.users.find_one({"role": "owner"}, {"_id": 0})
+    msg = (
+        f"📊 शिफ्ट सारांश / Shift Summary\n"
+        f"📅 {today}\n"
+        f"👤 Staff: {summary['staff_name']}\n"
+        f"💰 रोख/Cash: ₹{cash_total}\n"
+        f"📱 UPI: ₹{upi_total}\n"
+        f"📈 एकूण/Total: ₹{cash_total + upi_total}\n"
+        f"📉 खर्च/Expenses: ₹{expense_total}\n"
+        f"💵 निव्वळ/Net: ₹{cash_total + upi_total - expense_total}\n"
+        f"🏨 भरलेल्या/Occupied: {occupied}/{len(rooms)}\n"
+        f"📝 {input.notes or 'No notes'}"
+    )
+    
+    await db.whatsapp_logs.insert_one({
+        "phone": "owner",
+        "message_type": "shift_handover",
+        "content": msg,
+        "status": "mocked_sent",
+        "booking_id": None,
+        "sent_by": user.get("name"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"summary": summary, "whatsapp_sent": True, "message": msg}
+
+@api_router.get("/galla/remote")
+async def get_remote_cashbox(request: Request):
+    """Owner's Remote Cashbox - live view from anywhere"""
+    user = await get_current_user(request)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    txns = await db.transactions.find({"timestamp": {"$regex": f"^{today}"}}, {"_id": 0}).to_list(1000)
+    expenses = await db.expenses.find({"timestamp": {"$regex": f"^{today}"}}, {"_id": 0}).to_list(500)
+    rooms = await db.rooms.find({}, {"_id": 0}).to_list(100)
+    active_bookings = await db.bookings.find({"status": "active"}, {"_id": 0}).to_list(100)
+    
+    cash_total = sum(t["amount"] for t in txns if t.get("type") == "cash")
+    upi_total = sum(t["amount"] for t in txns if t.get("type") == "upi")
+    expense_total = sum(e["amount"] for e in expenses)
+    occupied = sum(1 for r in rooms if r["status"] == "occupied")
+    cleaning = sum(1 for r in rooms if r["status"] == "cleaning")
+    
+    # Last 5 handovers
+    handovers = await db.shift_handovers.find({}, {"_id": 0}).sort("timestamp", -1).to_list(5)
+    
+    return {
+        "live_galla": {
+            "date": today,
+            "cash_in_register": cash_total,
+            "upi_collected": upi_total,
+            "total_collected": cash_total + upi_total,
+            "total_expenses": expense_total,
+            "net_cash": cash_total + upi_total - expense_total,
+        },
+        "hotel_status": {
+            "occupied": occupied,
+            "cleaning": cleaning,
+            "available": len(rooms) - occupied - cleaning,
+            "total_rooms": len(rooms),
+            "occupancy_pct": round((occupied / len(rooms)) * 100, 1) if rooms else 0
+        },
+        "active_bookings": [{
+            "room_number": b["room_number"],
+            "guest_name": b["guest_name"],
+            "rate": b["rate_per_day"],
+            "check_in": b["check_in"],
+            "advance": b.get("advance_paid", 0)
+        } for b in active_bookings],
+        "recent_transactions": txns[-10:] if txns else [],
+        "recent_expenses": expenses[-5:] if expenses else [],
+        "shift_handovers": handovers
+    }
+
+@api_router.get("/galla/daily-summary")
+async def get_daily_auto_summary(request: Request, date: Optional[str] = None):
+    """Auto-generated daily summary for owner WhatsApp"""
+    user = await get_current_user(request)
+    target_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    txns = await db.transactions.find({"timestamp": {"$regex": f"^{target_date}"}}, {"_id": 0}).to_list(1000)
+    expenses = await db.expenses.find({"timestamp": {"$regex": f"^{target_date}"}}, {"_id": 0}).to_list(500)
+    bookings_today = await db.bookings.find({"created_at": {"$regex": f"^{target_date}"}}, {"_id": 0}).to_list(100)
+    completed_today = await db.bookings.find({"check_out": {"$regex": f"^{target_date}"}}, {"_id": 0}).to_list(100)
+    
+    cash_total = sum(t["amount"] for t in txns if t.get("type") == "cash")
+    upi_total = sum(t["amount"] for t in txns if t.get("type") == "upi")
+    expense_total = sum(e["amount"] for e in expenses)
+    
+    summary_msg = (
+        f"🏨 डेली रिपोर्ट / Daily Report\n"
+        f"📅 {target_date}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"💰 रोख/Cash: ₹{cash_total}\n"
+        f"📱 UPI: ₹{upi_total}\n"
+        f"📈 एकूण जमा/Total: ₹{cash_total + upi_total}\n"
+        f"📉 खर्च/Expenses: ₹{expense_total}\n"
+        f"💵 निव्वळ/Net: ₹{cash_total + upi_total - expense_total}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🔑 चेक-इन/Check-ins: {len(bookings_today)}\n"
+        f"🚪 चेक-आउट/Check-outs: {len(completed_today)}\n"
+        f"💳 व्यवहार/Transactions: {len(txns)}\n"
+    )
+    
+    # Mock send to owner via WhatsApp
+    await db.whatsapp_logs.insert_one({
+        "phone": "owner",
+        "message_type": "daily_summary",
+        "content": summary_msg,
+        "status": "mocked_sent",
+        "booking_id": None,
+        "sent_by": "system",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {
+        "date": target_date,
+        "cash": cash_total,
+        "upi": upi_total,
+        "total": cash_total + upi_total,
+        "expenses": expense_total,
+        "net": cash_total + upi_total - expense_total,
+        "check_ins": len(bookings_today),
+        "check_outs": len(completed_today),
+        "transactions": len(txns),
+        "message": summary_msg,
+        "whatsapp_sent": True
+    }
+
+# ---------- QR DIGITAL BELL (Public for guests) ----------
+@api_router.post("/qr/request")
+async def create_qr_request(input: QRRequestInput):
+    """Guest-facing: no auth needed. Guest scans QR in room."""
+    room = await db.rooms.find_one({"room_number": input.room_number}, {"_id": 0})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    req_doc = {
+        "request_id": f"QR-{secrets.token_hex(4).upper()}",
+        "room_number": input.room_number,
+        "request_type": input.request_type,
+        "details": input.details,
+        "guest_name": input.guest_name,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "resolved_at": None,
+        "resolved_by": None
+    }
+    await db.qr_requests.insert_one(req_doc)
+    req_doc.pop("_id", None)
+    return req_doc
+
+@api_router.get("/qr/requests")
+async def get_qr_requests(request: Request, status: Optional[str] = None):
+    """Staff-facing: view pending requests"""
+    await get_current_user(request)
+    query = {}
+    if status:
+        query["status"] = status
+    requests = await db.qr_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return requests
+
+@api_router.put("/qr/requests/{request_id}")
+async def resolve_qr_request(request_id: str, request: Request):
+    """Staff resolves a guest request"""
+    user = await get_current_user(request)
+    result = await db.qr_requests.update_one(
+        {"request_id": request_id},
+        {"$set": {
+            "status": "resolved",
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "resolved_by": user.get("name")
+        }}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return {"message": "Request resolved", "request_id": request_id}
+
+# ---------- VOICE EXPENSE PARSING ----------
+@api_router.post("/expenses/voice")
+async def add_voice_expense(input: VoiceExpenseInput, request: Request):
+    """Parse voice text like '100 rupaye laundry' into expense"""
+    user = await get_current_user(request)
+    import re
+    text = input.text.strip().lower()
+    
+    # Extract amount (numbers in the text)
+    amount_match = re.search(r'(\d+)', text)
+    amount = float(amount_match.group(1)) if amount_match else 0
+    
+    # Category detection
+    category_map = {
+        'laundry': ['laundry', 'dhulai', 'कपडे', 'धुलाई', 'wash'],
+        'electricity': ['electricity', 'bijli', 'वीज', 'light', 'current'],
+        'water': ['water', 'pani', 'पाणी'],
+        'maintenance': ['maintenance', 'repair', 'fix', 'दुरुस्ती', 'देखभाल'],
+        'supplies': ['supplies', 'soap', 'towel', 'पुरवठा', 'साबण'],
+        'other': []
+    }
+    
+    detected_category = 'other'
+    for cat, keywords in category_map.items():
+        for kw in keywords:
+            if kw in text:
+                detected_category = cat
+                break
+    
+    # Remove amount from text to get description
+    description = re.sub(r'\d+\s*(rupaye|rupee|rs|₹)?\s*', '', text).strip()
+    if not description:
+        description = text
+    
+    doc = {
+        "expense_id": f"EX-{secrets.token_hex(4).upper()}",
+        "description": description or text,
+        "amount": amount,
+        "category": detected_category,
+        "source": "voice",
+        "original_text": input.text,
+        "staff_id": user.get("_id"),
+        "staff_name": user.get("name"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.expenses.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+# ---------- PDF INVOICE ----------
+@api_router.get("/bookings/{booking_id}/invoice")
+async def get_invoice(booking_id: str, request: Request):
+    await get_current_user(request)
+    booking = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    guest = await db.guests.find_one({"guest_id": booking.get("guest_id")}, {"_id": 0})
+    
+    # Calculate billing if active
+    billing = booking.get("billing_details")
+    if not billing and booking["status"] == "active":
+        check_in_time = datetime.fromisoformat(booking["check_in"])
+        billing = calculate_billing(
+            check_in_time, datetime.now(timezone.utc),
+            booking["rate_per_day"], booking["num_guests"]
+        )
+    
+    invoice = {
+        "invoice_id": f"INV-{booking_id}",
+        "booking_id": booking_id,
+        "hotel_name": "Digital Register Hotel",
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "guest": {
+            "name": booking.get("guest_name"),
+            "phone": booking.get("guest_phone"),
+            "aadhar": guest.get("aadhar_number") if guest else None,
+            "address": guest.get("address") if guest else None,
+        },
+        "room_number": booking["room_number"],
+        "check_in": booking["check_in"],
+        "check_out": booking.get("check_out"),
+        "rate_per_day": booking["rate_per_day"],
+        "num_guests": booking["num_guests"],
+        "billing": billing,
+        "additional_charges": booking.get("additional_charges", 0),
+        "discount": booking.get("discount", 0),
+        "total_amount": booking.get("total_amount", billing.get("total_amount", 0) if billing else 0),
+        "advance_paid": booking.get("advance_paid", 0),
+        "total_paid": booking.get("total_paid", 0),
+        "balance_due": booking.get("balance_due", 0),
+        "payment_method": booking.get("payment_method"),
+        "status": booking["status"]
+    }
+    return invoice
 
 # ---------- SEED DATA ----------
 async def seed_rooms():

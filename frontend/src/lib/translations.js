@@ -108,6 +108,16 @@ const translations = {
   "staff": { mr: "कर्मचारी", en: "Staff" },
   "owner": { mr: "मालक", en: "Owner" },
   "long_press_to_clean": { mr: "स्वच्छ करण्यासाठी दाबून ठेवा", en: "Long press to mark clean" },
+  "shift_handover": { mr: "शिफ्ट हँडओव्हर", en: "Shift Handover" },
+  "remote_cashbox": { mr: "रिमोट कॅशबॉक्स", en: "Remote Cashbox" },
+  "guest_requests": { mr: "पाहुणे विनंत्या", en: "Guest Requests" },
+  "digital_bell": { mr: "डिजिटल बेल", en: "Digital Bell" },
+  "voice_expense": { mr: "बोलून खर्च जोडा", en: "Voice Expense" },
+  "print_invoice": { mr: "बिल प्रिंट", en: "Print Invoice" },
+  "daily_summary": { mr: "दैनिक सारांश", en: "Daily Summary" },
+  "pending": { mr: "प्रलंबित", en: "Pending" },
+  "resolved": { mr: "पूर्ण", en: "Resolved" },
+  "towel": { mr: "टॉवेल", en: "Towel" },
 };
 
 export default translations;

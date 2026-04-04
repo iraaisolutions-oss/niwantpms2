@@ -304,6 +304,169 @@ class HMSAPITester:
             200
         )
 
+    # ========== PHASE 2 TESTS ==========
+    
+    def test_shift_handover(self):
+        """Test shift handover with WhatsApp to owner"""
+        print(f"\n📋 Testing Shift Handover")
+        handover_data = {
+            "staff_name": "Test Staff",
+            "notes": "Test shift handover notes"
+        }
+        
+        success, response = self.run_test(
+            "Create shift handover",
+            "POST",
+            "galla/shift-handover",
+            200,
+            data=handover_data
+        )
+        
+        if success and 'summary' in response:
+            print(f"   Handover ID: {response['summary'].get('handover_id', 'N/A')}")
+            print(f"   WhatsApp sent: {response.get('whatsapp_sent', False)}")
+            return True, response
+        return False, response
+
+    def test_remote_cashbox(self):
+        """Test remote cashbox for owner"""
+        print(f"\n💰 Testing Remote Cashbox")
+        success, response = self.run_test(
+            "Get remote cashbox data",
+            "GET",
+            "galla/remote",
+            200
+        )
+        
+        if success and 'live_galla' in response:
+            galla = response['live_galla']
+            hotel = response.get('hotel_status', {})
+            print(f"   Cash in register: ₹{galla.get('cash_in_register', 0)}")
+            print(f"   Hotel occupancy: {hotel.get('occupancy_pct', 0)}%")
+            return True, response
+        return False, response
+
+    def test_daily_summary(self):
+        """Test daily summary generation"""
+        success, response = self.run_test(
+            "Generate daily summary",
+            "GET",
+            "galla/daily-summary",
+            200
+        )
+        
+        if success and 'message' in response:
+            print(f"   WhatsApp sent: {response.get('whatsapp_sent', False)}")
+            return True, response
+        return False, response
+
+    def test_qr_request_create(self):
+        """Test QR guest request creation (no auth)"""
+        print(f"\n🔔 Testing QR Digital Bell")
+        
+        # Save current token and clear it for public endpoint
+        saved_token = self.token
+        self.token = None
+        
+        qr_data = {
+            "room_number": 101,
+            "request_type": "water",
+            "guest_name": "Test Guest",
+            "details": "Need water bottles"
+        }
+        
+        success, response = self.run_test(
+            "Create QR guest request (public)",
+            "POST",
+            "qr/request",
+            200,
+            data=qr_data
+        )
+        
+        # Restore token
+        self.token = saved_token
+        
+        if success and 'request_id' in response:
+            print(f"   Request ID: {response['request_id']}")
+            return response['request_id'], response
+        return None, response
+
+    def test_qr_requests_list(self):
+        """Test get QR requests for staff"""
+        return self.run_test(
+            "Get QR requests (staff)",
+            "GET",
+            "qr/requests",
+            200
+        )
+
+    def test_qr_request_resolve(self, request_id):
+        """Test resolve QR request"""
+        if not request_id:
+            print("   ⚠️  No request ID to resolve")
+            return False, {}
+            
+        return self.run_test(
+            f"Resolve QR request {request_id}",
+            "PUT",
+            f"qr/requests/{request_id}",
+            200
+        )
+
+    def test_voice_expense(self):
+        """Test voice expense parsing"""
+        print(f"\n🎤 Testing Voice Expense")
+        voice_data = {
+            "text": "200 rupaye laundry"
+        }
+        
+        success, response = self.run_test(
+            "Parse voice expense",
+            "POST",
+            "expenses/voice",
+            200,
+            data=voice_data
+        )
+        
+        if success and 'amount' in response:
+            print(f"   Parsed amount: ₹{response.get('amount', 0)}")
+            print(f"   Detected category: {response.get('category', 'unknown')}")
+            return True, response
+        return False, response
+
+    def test_invoice_generation(self, booking_id):
+        """Test invoice generation"""
+        if not booking_id:
+            print("   ⚠️  No booking ID for invoice")
+            return False, {}
+            
+        return self.run_test(
+            f"Generate invoice for {booking_id}",
+            "GET",
+            f"bookings/{booking_id}/invoice",
+            200
+        )
+
+    def test_advance_payment(self, booking_id):
+        """Test add advance payment"""
+        if not booking_id:
+            print("   ⚠️  No booking ID for advance")
+            return False, {}
+            
+        advance_data = {
+            "booking_id": booking_id,
+            "amount": 300.0,
+            "payment_method": "cash"
+        }
+        
+        return self.run_test(
+            f"Add advance payment to {booking_id}",
+            "POST",
+            "bookings/advance",
+            200,
+            data=advance_data
+        )
+
     def run_all_tests(self):
         """Run complete test suite"""
         print("🚀 Starting Digital Register HMS Backend API Tests")
@@ -345,11 +508,39 @@ class HMSAPITester:
         self.test_analytics_leakage()
         self.test_analytics_staff()
 
+        # ========== PHASE 2 FEATURE TESTS ==========
+        print(f"\n🚀 Testing Phase 2 Features")
+        
+        # Test Shift Handover
+        self.test_shift_handover()
+        
+        # Test Remote Cashbox (owner only)
+        self.test_remote_cashbox()
+        
+        # Test Daily Summary
+        self.test_daily_summary()
+        
+        # Test QR Digital Bell
+        request_id, _ = self.test_qr_request_create()
+        self.test_qr_requests_list()
+        if request_id:
+            self.test_qr_request_resolve(request_id)
+        
+        # Test Voice Expense
+        self.test_voice_expense()
+        
+        # Test Invoice & Advance (if we have a booking)
+        if booking_id:
+            self.test_invoice_generation(booking_id)
+            self.test_advance_payment(booking_id)
+
         # Test Staff Login
         print(f"\n👤 Testing Staff Login")
         staff_success, staff_data = self.test_auth_login("staff@hotel.com", "staff123")
         if staff_success:
             self.test_rooms_list()  # Test staff can access rooms
+            # Test staff can access QR requests
+            self.test_qr_requests_list()
 
         # Print final results
         print("\n" + "=" * 60)

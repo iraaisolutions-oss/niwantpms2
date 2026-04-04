@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -12,6 +12,11 @@ import OwnerDashboardPage from './pages/OwnerDashboardPage';
 import FormCPage from './pages/FormCPage';
 import WhatsAppPage from './pages/WhatsAppPage';
 import MenuPage from './pages/MenuPage';
+import RemoteCashboxPage from './pages/RemoteCashboxPage';
+import ShiftHandoverPage from './pages/ShiftHandoverPage';
+import { GuestQRPage, StaffRequestsPage } from './pages/QRBellPage';
+import { syncPendingActions } from './lib/indexedDB';
+import api from './lib/api';
 import '@/App.css';
 
 function ProtectedRoute({ children }) {
@@ -40,6 +45,15 @@ function AppLayout({ children }) {
 }
 
 function AppRoutes() {
+  // Sync offline actions when back online
+  useEffect(() => {
+    const handleOnline = () => syncPendingActions(api);
+    window.addEventListener('online', handleOnline);
+    // Try sync on load
+    if (navigator.onLine) syncPendingActions(api);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -51,6 +65,11 @@ function AppRoutes() {
       <Route path="/formc" element={<ProtectedRoute><AppLayout><FormCPage /></AppLayout></ProtectedRoute>} />
       <Route path="/whatsapp" element={<ProtectedRoute><AppLayout><WhatsAppPage /></AppLayout></ProtectedRoute>} />
       <Route path="/menu" element={<ProtectedRoute><AppLayout><MenuPage /></AppLayout></ProtectedRoute>} />
+      <Route path="/remote-cashbox" element={<ProtectedRoute><AppLayout><RemoteCashboxPage /></AppLayout></ProtectedRoute>} />
+      <Route path="/shift-handover" element={<ProtectedRoute><AppLayout><ShiftHandoverPage /></AppLayout></ProtectedRoute>} />
+      <Route path="/requests" element={<ProtectedRoute><AppLayout><StaffRequestsPage /></AppLayout></ProtectedRoute>} />
+      {/* Public QR page for guests - no auth */}
+      <Route path="/qr/:roomNumber" element={<GuestQRPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
