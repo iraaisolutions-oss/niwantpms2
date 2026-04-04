@@ -15,6 +15,8 @@ import MenuPage from './pages/MenuPage';
 import RemoteCashboxPage from './pages/RemoteCashboxPage';
 import ShiftHandoverPage from './pages/ShiftHandoverPage';
 import { GuestQRPage, StaffRequestsPage } from './pages/QRBellPage';
+import RoomManagementPage from './pages/RoomManagementPage';
+import ChannelManagerPage from './pages/ChannelManagerPage';
 import { syncPendingActions } from './lib/indexedDB';
 import api from './lib/api';
 import '@/App.css';
@@ -68,6 +70,8 @@ function AppRoutes() {
       <Route path="/remote-cashbox" element={<ProtectedRoute><AppLayout><RemoteCashboxPage /></AppLayout></ProtectedRoute>} />
       <Route path="/shift-handover" element={<ProtectedRoute><AppLayout><ShiftHandoverPage /></AppLayout></ProtectedRoute>} />
       <Route path="/requests" element={<ProtectedRoute><AppLayout><StaffRequestsPage /></AppLayout></ProtectedRoute>} />
+      <Route path="/room-management" element={<ProtectedRoute><RoomManagementPage /></ProtectedRoute>} />
+      <Route path="/channel-manager" element={<ProtectedRoute><ChannelManagerPage /></ProtectedRoute>} />
       {/* Public QR page for guests - no auth */}
       <Route path="/qr/:roomNumber" element={<GuestQRPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

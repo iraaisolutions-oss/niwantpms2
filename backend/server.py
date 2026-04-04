@@ -105,6 +105,7 @@ class CheckInInput(BaseModel):
     payment_method: str = "cash"
     check_in_time: Optional[str] = None
     id_type: str = "Aadhar"
+    source_channel: str = "walk-in"
 
 class CheckOutInput(BaseModel):
     booking_id: str
@@ -147,6 +148,37 @@ class QRRequestInput(BaseModel):
 
 class VoiceExpenseInput(BaseModel):
     text: str  # e.g., "100 rupaye laundry"
+
+class HotelSettingsInput(BaseModel):
+    hotel_name: Optional[str] = None
+    wifi_name: Optional[str] = None
+    wifi_password: Optional[str] = None
+    hotel_rules: Optional[List[str]] = None
+    welcome_message: Optional[str] = None
+    checkout_message: Optional[str] = None
+
+class RoomCreateInput(BaseModel):
+    room_number: int
+    floor: int = 1
+    room_type: str = "standard"
+    rate: float = 1000.0
+
+class RoomEditInput(BaseModel):
+    new_room_number: Optional[int] = None
+    floor: Optional[int] = None
+    room_type: Optional[str] = None
+    rate: Optional[float] = None
+
+class ChannelInput(BaseModel):
+    name: str
+    channel_type: str = "ota"
+    commission_pct: float = 0
+    is_active: bool = True
+
+class ChannelRateInput(BaseModel):
+    channel_id: str
+    room_type: str
+    rate: float
 
 # ---------- AUTH ROUTES ----------
 @api_router.post("/auth/register")
@@ -330,6 +362,7 @@ async def check_in(input: CheckInInput, request: Request):
         "total_amount": 0,
         "payment_method": input.payment_method,
         "status": "active",
+        "source_channel": input.source_channel,
         "billing_notes": [],
         "checked_in_by": user.get("name", "unknown"),
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -361,11 +394,33 @@ async def check_in(input: CheckInInput, request: Request):
         }}
     )
 
-    # Log WhatsApp welcome message (MOCKED)
+    # Auto-send WhatsApp messages (MOCKED): Welcome + WiFi + Rules
+    settings = await db.settings.find_one({}, {"_id": 0}) or {}
+    wifi_name = settings.get("wifi_name", "HotelGuest")
+    wifi_pass = settings.get("wifi_password", "hotel1234")
+    hotel_rules = settings.get("hotel_rules", ["Check-out: 11 AM", "No smoking in rooms", "ID proof required"])
+
     await db.whatsapp_logs.insert_one({
         "phone": input.guest_phone,
         "message_type": "welcome",
-        "content": f"Welcome {input.guest_name}! Room {input.room_number} is ready.",
+        "content": f"Welcome {input.guest_name}! Room {input.room_number} is ready. We hope you enjoy your stay!",
+        "status": "mocked_sent",
+        "booking_id": booking_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    await db.whatsapp_logs.insert_one({
+        "phone": input.guest_phone,
+        "message_type": "wifi",
+        "content": f"Wi-Fi Details:\nNetwork: {wifi_name}\nPassword: {wifi_pass}",
+        "status": "mocked_sent",
+        "booking_id": booking_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    rules_text = "\n".join([f"- {r}" for r in hotel_rules])
+    await db.whatsapp_logs.insert_one({
+        "phone": input.guest_phone,
+        "message_type": "rules",
+        "content": f"Hotel Rules:\n{rules_text}",
         "status": "mocked_sent",
         "booking_id": booking_id,
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -1024,6 +1079,281 @@ async def add_voice_expense(input: VoiceExpenseInput, request: Request):
     doc.pop("_id", None)
     return doc
 
+# ---------- HOTEL SETTINGS ----------
+@api_router.get("/settings")
+async def get_settings(request: Request):
+    await get_current_user(request)
+    settings = await db.settings.find_one({}, {"_id": 0})
+    return settings or {}
+
+@api_router.put("/settings")
+async def update_settings(input: HotelSettingsInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    update = {k: v for k, v in input.dict().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    await db.settings.update_one({}, {"$set": update}, upsert=True)
+    settings = await db.settings.find_one({}, {"_id": 0})
+    return settings
+
+# ---------- ROOM MANAGEMENT (Owner) ----------
+@api_router.post("/rooms/manage")
+async def add_room(input: RoomCreateInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    existing = await db.rooms.find_one({"room_number": input.room_number})
+    if existing:
+        raise HTTPException(status_code=400, detail="Room number already exists")
+    room_doc = {
+        "room_number": input.room_number,
+        "floor": input.floor,
+        "room_type": input.room_type,
+        "status": "clean",
+        "rate": input.rate,
+        "current_booking_id": None,
+        "status_changed_at": datetime.now(timezone.utc).isoformat(),
+        "status_changed_by": user.get("name")
+    }
+    await db.rooms.insert_one(room_doc)
+    room_doc.pop("_id", None)
+    return room_doc
+
+@api_router.put("/rooms/manage/{room_number}")
+async def edit_room(room_number: int, input: RoomEditInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    room = await db.rooms.find_one({"room_number": room_number})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    update = {}
+    if input.floor is not None:
+        update["floor"] = input.floor
+    if input.room_type is not None:
+        update["room_type"] = input.room_type
+    if input.rate is not None:
+        update["rate"] = input.rate
+    if input.new_room_number is not None and input.new_room_number != room_number:
+        dup = await db.rooms.find_one({"room_number": input.new_room_number})
+        if dup:
+            raise HTTPException(status_code=400, detail="New room number already exists")
+        update["room_number"] = input.new_room_number
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    await db.rooms.update_one({"room_number": room_number}, {"$set": update})
+    updated = await db.rooms.find_one({"room_number": update.get("room_number", room_number)}, {"_id": 0})
+    return updated
+
+@api_router.delete("/rooms/manage/{room_number}")
+async def delete_room(room_number: int, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    room = await db.rooms.find_one({"room_number": room_number})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.get("status") == "occupied":
+        raise HTTPException(status_code=400, detail="Cannot delete occupied room")
+    await db.rooms.delete_one({"room_number": room_number})
+    return {"message": f"Room {room_number} deleted"}
+
+# ---------- CHANNEL MANAGER ----------
+@api_router.get("/channels")
+async def get_channels(request: Request):
+    await get_current_user(request)
+    channels = await db.channels.find({}, {"_id": 0}).to_list(50)
+    return channels
+
+@api_router.post("/channels")
+async def create_channel(input: ChannelInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    channel_id = f"CH-{secrets.token_hex(4).upper()}"
+    doc = {
+        "channel_id": channel_id,
+        "name": input.name,
+        "channel_type": input.channel_type,
+        "commission_pct": input.commission_pct,
+        "is_active": input.is_active,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.channels.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.put("/channels/{channel_id}")
+async def update_channel(channel_id: str, request: Request, name: Optional[str] = None, channel_type: Optional[str] = None, commission_pct: Optional[float] = None, is_active: Optional[bool] = None):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    update = {}
+    if name is not None:
+        update["name"] = name
+    if channel_type is not None:
+        update["channel_type"] = channel_type
+    if commission_pct is not None:
+        update["commission_pct"] = commission_pct
+    if is_active is not None:
+        update["is_active"] = is_active
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.channels.update_one({"channel_id": channel_id}, {"$set": update})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel = await db.channels.find_one({"channel_id": channel_id}, {"_id": 0})
+    return channel
+
+@api_router.delete("/channels/{channel_id}")
+async def delete_channel(channel_id: str, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    result = await db.channels.delete_one({"channel_id": channel_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {"message": "Channel deleted"}
+
+@api_router.get("/channels/rates")
+async def get_channel_rates(request: Request):
+    await get_current_user(request)
+    rates = await db.channel_rates.find({}, {"_id": 0}).to_list(200)
+    return rates
+
+@api_router.post("/channels/rates")
+async def set_channel_rate(input: ChannelRateInput, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    await db.channel_rates.update_one(
+        {"channel_id": input.channel_id, "room_type": input.room_type},
+        {"$set": {
+            "channel_id": input.channel_id,
+            "room_type": input.room_type,
+            "rate": input.rate,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    return {"message": "Rate updated"}
+
+@api_router.get("/channels/bookings")
+async def get_channel_bookings(request: Request, channel_id: Optional[str] = None):
+    await get_current_user(request)
+    query = {}
+    if channel_id:
+        query["source_channel"] = channel_id
+    bookings = await db.bookings.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return bookings
+
+@api_router.post("/channels/sync")
+async def simulate_channel_sync(request: Request):
+    """Simulate receiving bookings from OTA channels"""
+    import random
+    user = await get_current_user(request)
+    channels = await db.channels.find({"is_active": True, "channel_type": "ota"}, {"_id": 0}).to_list(20)
+    if not channels:
+        return {"message": "No active OTA channels", "synced": []}
+    available_rooms = await db.rooms.find({"status": "clean"}, {"_id": 0}).to_list(100)
+    if not available_rooms:
+        return {"message": "No available rooms", "synced": []}
+
+    names = ["Rahul Sharma", "Priya Patel", "Amit Kumar", "Sneha Reddy", "Vikram Singh", "Anita Desai", "Rohan Mehta", "Kavita Joshi"]
+    synced = []
+    num_bookings = min(random.randint(1, 3), len(available_rooms))
+
+    for i in range(num_bookings):
+        channel = random.choice(channels)
+        room = available_rooms[i]
+        channel_rate = await db.channel_rates.find_one(
+            {"channel_id": channel["channel_id"], "room_type": room["room_type"]}, {"_id": 0}
+        )
+        rate = channel_rate["rate"] if channel_rate else room["rate"]
+        booking_id = f"BK-{secrets.token_hex(4).upper()}"
+        guest_name = random.choice(names)
+        guest_phone = f"9{random.randint(100000000, 999999999)}"
+
+        booking_doc = {
+            "booking_id": booking_id,
+            "room_number": room["room_number"],
+            "guest_name": guest_name,
+            "guest_phone": guest_phone,
+            "num_guests": random.randint(1, 2),
+            "check_in": datetime.now(timezone.utc).isoformat(),
+            "check_out": None,
+            "rate_per_day": rate,
+            "advance_paid": 0,
+            "total_paid": 0,
+            "balance_due": 0,
+            "total_amount": 0,
+            "payment_method": "upi",
+            "status": "active",
+            "source_channel": channel["channel_id"],
+            "source_channel_name": channel["name"],
+            "channel_ref": f"{channel['name'][:3].upper()}-{secrets.token_hex(3).upper()}",
+            "commission_pct": channel.get("commission_pct", 0),
+            "billing_notes": [],
+            "checked_in_by": "OTA Sync",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.bookings.insert_one(booking_doc)
+        await db.rooms.update_one(
+            {"room_number": room["room_number"]},
+            {"$set": {
+                "status": "occupied",
+                "current_booking_id": booking_id,
+                "status_changed_at": datetime.now(timezone.utc).isoformat(),
+                "status_changed_by": "OTA Sync"
+            }}
+        )
+        booking_doc.pop("_id", None)
+        synced.append(booking_doc)
+
+    return {"message": f"Synced {len(synced)} bookings", "synced": synced}
+
+@api_router.get("/channels/analytics")
+async def get_channel_analytics(request: Request):
+    await get_current_user(request)
+    channels = await db.channels.find({}, {"_id": 0}).to_list(50)
+    bookings = await db.bookings.find({}, {"_id": 0}).to_list(5000)
+
+    channel_map = {c["channel_id"]: c for c in channels}
+    channel_map["walk-in"] = {"channel_id": "walk-in", "name": "Walk-in", "commission_pct": 0}
+
+    analytics = {}
+    for ch_id, ch in channel_map.items():
+        ch_bookings = [b for b in bookings if b.get("source_channel", "walk-in") == ch_id]
+        total_revenue = sum(b.get("total_amount", 0) for b in ch_bookings)
+        commission = total_revenue * ch.get("commission_pct", 0) / 100
+        analytics[ch_id] = {
+            "channel_id": ch_id,
+            "channel_name": ch["name"],
+            "total_bookings": len(ch_bookings),
+            "active_bookings": sum(1 for b in ch_bookings if b["status"] == "active"),
+            "completed_bookings": sum(1 for b in ch_bookings if b["status"] == "completed"),
+            "total_revenue": total_revenue,
+            "commission": round(commission, 2),
+            "net_revenue": round(total_revenue - commission, 2),
+            "commission_pct": ch.get("commission_pct", 0)
+        }
+
+    total_revenue = sum(a["total_revenue"] for a in analytics.values())
+    total_commission = sum(a["commission"] for a in analytics.values())
+
+    return {
+        "channels": list(analytics.values()),
+        "summary": {
+            "total_revenue": total_revenue,
+            "total_commission": round(total_commission, 2),
+            "net_revenue": round(total_revenue - total_commission, 2),
+            "total_bookings": sum(a["total_bookings"] for a in analytics.values()),
+            "channel_count": len(analytics)
+        }
+    }
+
 # ---------- PDF INVOICE ----------
 @api_router.get("/bookings/{booking_id}/invoice")
 async def get_invoice(booking_id: str, request: Request):
@@ -1131,11 +1461,45 @@ async def seed_admin():
         f.write(f"## Staff Account\n- Email: {staff_email}\n- Password: {staff_pass}\n- Role: staff\n\n")
         f.write("## Auth Endpoints\n- POST /api/auth/login\n- POST /api/auth/register\n- GET /api/auth/me\n- POST /api/auth/logout\n")
 
+async def seed_channels():
+    count = await db.channels.count_documents({})
+    if count == 0:
+        channels = [
+            {"channel_id": "CH-OYO", "name": "OYO", "channel_type": "ota", "commission_pct": 25, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"channel_id": "CH-MMT", "name": "MakeMyTrip", "channel_type": "ota", "commission_pct": 20, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"channel_id": "CH-BOOKING", "name": "Booking.com", "channel_type": "ota", "commission_pct": 15, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"channel_id": "CH-AGODA", "name": "Agoda", "channel_type": "ota", "commission_pct": 18, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"channel_id": "CH-GOIBIBO", "name": "Goibibo", "channel_type": "ota", "commission_pct": 20, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()},
+        ]
+        await db.channels.insert_many(channels)
+        logging.info("Seeded 5 OTA channels")
+
+async def seed_hotel_settings():
+    existing = await db.settings.find_one({})
+    if not existing:
+        await db.settings.insert_one({
+            "hotel_name": "Digital Register Hotel",
+            "wifi_name": "HotelGuest",
+            "wifi_password": "hotel1234",
+            "hotel_rules": [
+                "Check-out time: 11:00 AM",
+                "No smoking in rooms",
+                "Visitors not allowed after 10 PM",
+                "ID proof required for all guests",
+                "No loud music after 10 PM"
+            ],
+            "welcome_message": "Welcome! We hope you have a pleasant stay.",
+            "checkout_message": "Thank you for staying! Please leave a Google review."
+        })
+        logging.info("Seeded hotel settings")
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
     await seed_admin()
     await seed_rooms()
+    await seed_channels()
+    await seed_hotel_settings()
 
 app.include_router(api_router)
 

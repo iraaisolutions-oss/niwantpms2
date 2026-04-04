@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 
 class HMSAPITester:
-    def __init__(self, base_url="https://marathi-rooms.preview.emergentagent.com"):
+    def __init__(self, base_url="https://galla-manager.preview.emergentagent.com"):
         self.base_url = base_url
         self.token = None
         self.tests_run = 0

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { CurrencyInr, Wallet, CreditCard, ArrowUp, ArrowDown, Plus, Receipt, Microphone, ClipboardText } from '@phosphor-icons/react';
+import { CurrencyInr, Wallet, CreditCard, ArrowUp, ArrowDown, Plus, Receipt, Microphone, MicrophoneSlash, ClipboardText } from '@phosphor-icons/react';
 
 export default function GallaPage() {
   const { t, lang } = useLanguage();
@@ -14,6 +14,9 @@ export default function GallaPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [voiceText, setVoiceText] = useState('');
   const [showVoice, setShowVoice] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef(null);
 
   const categories = [
     { id: 'laundry', icon: '👔' },
@@ -25,18 +28,73 @@ export default function GallaPage() {
   ];
 
   useEffect(() => {
-    fetchSummary();
-  }, [selectedDate]);
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setVoiceSupported(!!SR);
+    return () => {
+      if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch(e) {} }
+    };
+  }, []);
+
+  useEffect(() => { fetchSummary(); }, [selectedDate]);
 
   const fetchSummary = async () => {
     try {
       const { data } = await api.get(`/galla/summary?date=${selectedDate}`);
       setSummary(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const startVoiceRecording = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setShowVoice(true);
+      return;
     }
+    const recognition = new SpeechRecognition();
+    recognition.lang = lang === 'mr' ? 'mr-IN' : 'hi-IN';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setVoiceText(transcript);
+    };
+
+    recognition.onend = () => { setIsRecording(false); };
+    recognition.onerror = (event) => {
+      console.error('Speech error:', event.error);
+      setIsRecording(false);
+      // Fallback to text input
+      setShowVoice(true);
+    };
+
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+    setShowVoice(true);
+    setVoiceText('');
+    recognition.start();
+  };
+
+  const stopVoiceRecording = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
+    }
+    setIsRecording(false);
+  };
+
+  const handleVoiceSubmit = async () => {
+    if (!voiceText.trim()) return;
+    try {
+      await api.post('/expenses/voice', { text: voiceText });
+      setVoiceText('');
+      setShowVoice(false);
+      fetchSummary();
+    } catch (err) { console.error(err); }
   };
 
   const handleAddExpense = async () => {
@@ -46,9 +104,7 @@ export default function GallaPage() {
       setShowAddExpense(false);
       setExpenseForm({ description: '', amount: 0, category: 'other' });
       fetchSummary();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   if (loading) {
@@ -67,16 +123,9 @@ export default function GallaPage() {
           {lang === 'mr' ? 'डिजिटल गल्ला' : 'Digital Galla'}
         </h1>
         <p className="text-zinc-500 text-sm">{t('shift_summary')}</p>
-
-        {/* Date Picker */}
         <div className="mt-3">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="h-12 px-4 rounded-xl border-2 border-zinc-200 font-medium text-sm focus:border-zinc-900 focus:outline-none bg-white"
-            data-testid="galla-date-picker"
-          />
+          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+            className="h-12 px-4 rounded-xl border-2 border-zinc-200 font-medium text-sm focus:border-zinc-900 focus:outline-none bg-white" data-testid="galla-date-picker" />
         </div>
       </div>
 
@@ -90,7 +139,6 @@ export default function GallaPage() {
             </div>
             <div className="text-3xl font-black text-[#14532D]">₹{summary?.cash_collected || 0}</div>
           </div>
-
           <div className="bg-blue-50 border-2 border-blue-300 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <CreditCard size={20} weight="bold" className="text-blue-900" />
@@ -122,126 +170,111 @@ export default function GallaPage() {
           </div>
         </div>
 
-        {/* Add Expense Button */}
+        {/* Add Expense & Voice Buttons */}
         <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setShowAddExpense(!showAddExpense)}
-            className="bg-zinc-900 text-white h-16 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform font-bold text-base uppercase tracking-[0.05em]"
-            data-testid="add-expense-btn"
-          >
-            <Plus size={20} weight="bold" />
-            {lang === 'mr' ? 'खर्च जोडा' : 'Add Expense'}
+          <button onClick={() => setShowAddExpense(!showAddExpense)}
+            className="bg-zinc-900 text-white h-16 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform font-bold text-base uppercase tracking-[0.05em]" data-testid="add-expense-btn">
+            <Plus size={20} weight="bold" /> {lang === 'mr' ? 'खर्च जोडा' : 'Add Expense'}
           </button>
-          <button
-            onClick={() => setShowVoice(!showVoice)}
-            className="bg-[#2563EB] text-white h-16 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform font-bold text-base uppercase tracking-[0.05em]"
-            data-testid="voice-expense-btn"
-          >
+          <button onClick={startVoiceRecording}
+            className={`h-16 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform font-bold text-base uppercase tracking-[0.05em] ${
+              isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-[#2563EB] text-white'
+            }`} data-testid="voice-expense-btn">
             <Microphone size={20} weight="bold" />
-            {lang === 'mr' ? 'बोला' : 'Voice'}
+            {isRecording ? (lang === 'mr' ? 'ऐकतोय...' : 'Listening...') : (lang === 'mr' ? 'बोला' : 'Voice')}
           </button>
         </div>
 
-        {/* Voice Expense */}
+        {/* Voice Expense Section */}
         {showVoice && (
           <div className="bg-white rounded-2xl border-2 border-[#2563EB] p-4 space-y-3" data-testid="voice-expense-form">
             <label className="text-xs uppercase tracking-[0.1em] font-bold text-blue-600 block">
               <Microphone size={14} weight="bold" className="inline mr-1" />
               {lang === 'mr' ? 'बोलून खर्च जोडा' : 'Voice Expense'}
             </label>
-            <input
-              type="text"
-              value={voiceText}
-              onChange={(e) => setVoiceText(e.target.value)}
-              className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-blue-500 focus:outline-none"
-              placeholder={lang === 'mr' ? 'उदा: 100 rupaye laundry' : 'e.g. 100 rupaye laundry'}
-              data-testid="voice-text-input"
-            />
-            <button
-              onClick={async () => {
-                if (!voiceText.trim()) return;
-                try {
-                  await api.post('/expenses/voice', { text: voiceText });
-                  setVoiceText('');
-                  setShowVoice(false);
-                  fetchSummary();
-                } catch (err) { console.error(err); }
-              }}
-              className="w-full h-12 rounded-xl bg-[#2563EB] text-white font-bold active:scale-95 transition-transform"
-              data-testid="voice-submit-btn"
-            >
-              {lang === 'mr' ? 'जोडा' : 'Add'}
+
+            {/* Recording Controls */}
+            {voiceSupported && (
+              <div className="flex gap-3">
+                <button
+                  onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
+                  className={`flex-1 h-14 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform ${
+                    isRecording ? 'bg-red-500 text-white' : 'bg-blue-100 text-blue-700 border-2 border-blue-200'
+                  }`}
+                  data-testid="voice-record-btn"
+                >
+                  {isRecording ? (
+                    <><MicrophoneSlash size={20} weight="bold" /> {lang === 'mr' ? 'थांबवा' : 'Stop'}</>
+                  ) : (
+                    <><Microphone size={20} weight="bold" /> {lang === 'mr' ? 'पुन्हा रेकॉर्ड' : 'Record Again'}</>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {isRecording && (
+              <div className="flex items-center justify-center gap-2 py-2" data-testid="voice-recording-indicator">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-sm font-bold text-red-600">
+                  {lang === 'mr' ? 'बोला... "100 रुपये लॉण्ड्री"' : 'Speak... "100 rupaye laundry"'}
+                </span>
+              </div>
+            )}
+
+            {/* Transcript / Manual Input */}
+            <div>
+              <label className="text-xs font-bold text-zinc-400 mb-1 block">
+                {voiceText ? (lang === 'mr' ? 'ओळखलेला मजकूर' : 'Recognized Text') : (lang === 'mr' ? 'किंवा टाइप करा' : 'Or type manually')}
+              </label>
+              <input type="text" value={voiceText} onChange={(e) => setVoiceText(e.target.value)}
+                className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-blue-500 focus:outline-none"
+                placeholder={lang === 'mr' ? 'उदा: 100 rupaye laundry' : 'e.g. 100 rupaye laundry'} data-testid="voice-text-input" />
+            </div>
+
+            <button onClick={handleVoiceSubmit}
+              disabled={!voiceText.trim()}
+              className="w-full h-12 rounded-xl bg-[#2563EB] text-white font-bold active:scale-95 transition-transform disabled:opacity-50" data-testid="voice-submit-btn">
+              {lang === 'mr' ? 'खर्च जोडा' : 'Add Expense'}
             </button>
           </div>
         )}
 
         {/* Shift Handover */}
-        <button
-          onClick={() => navigate('/shift-handover')}
-          className="bg-amber-50 border-2 border-amber-200 text-amber-700 h-16 rounded-xl flex items-center justify-center gap-3 w-full active:scale-95 transition-transform text-base font-bold"
-          data-testid="goto-shift-handover-btn"
-        >
-          <ClipboardText size={24} weight="bold" />
-          {lang === 'mr' ? 'शिफ्ट हँडओव्हर करा' : 'Complete Shift Handover'}
+        <button onClick={() => navigate('/shift-handover')}
+          className="bg-amber-50 border-2 border-amber-200 text-amber-700 h-16 rounded-xl flex items-center justify-center gap-3 w-full active:scale-95 transition-transform text-base font-bold" data-testid="goto-shift-handover-btn">
+          <ClipboardText size={24} weight="bold" /> {lang === 'mr' ? 'शिफ्ट हँडओव्हर करा' : 'Complete Shift Handover'}
         </button>
 
         {/* Add Expense Form */}
         {showAddExpense && (
           <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4 space-y-4" data-testid="expense-form">
             <div>
-              <label className="text-xs font-bold text-zinc-400 mb-2 block">
-                {lang === 'mr' ? 'प्रकार' : 'Category'}
-              </label>
+              <label className="text-xs font-bold text-zinc-400 mb-2 block">{lang === 'mr' ? 'प्रकार' : 'Category'}</label>
               <div className="grid grid-cols-3 gap-2">
                 {categories.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setExpenseForm(prev => ({...prev, category: cat.id}))}
+                  <button key={cat.id} onClick={() => setExpenseForm(prev => ({...prev, category: cat.id}))}
                     className={`h-14 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-1 active:scale-95 transition-transform ${
-                      expenseForm.category === cat.id
-                        ? 'bg-zinc-900 text-white border-zinc-900'
-                        : 'bg-white text-zinc-600 border-zinc-200'
-                    }`}
-                    data-testid={`expense-cat-${cat.id}`}
-                  >
-                    <span>{cat.icon}</span>
-                    <span>{t(cat.id)}</span>
+                      expenseForm.category === cat.id ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200'
+                    }`} data-testid={`expense-cat-${cat.id}`}>
+                    <span>{cat.icon}</span> <span>{t(cat.id)}</span>
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-zinc-400 mb-1 block">
-                {lang === 'mr' ? 'वर्णन' : 'Description'}
-              </label>
-              <input
-                type="text"
-                value={expenseForm.description}
-                onChange={(e) => setExpenseForm(prev => ({...prev, description: e.target.value}))}
+              <label className="text-xs font-bold text-zinc-400 mb-1 block">{lang === 'mr' ? 'वर्णन' : 'Description'}</label>
+              <input type="text" value={expenseForm.description} onChange={(e) => setExpenseForm(prev => ({...prev, description: e.target.value}))}
                 className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none"
-                placeholder={lang === 'mr' ? 'उदा: धुलाई सेवा' : 'e.g. Laundry service'}
-                data-testid="expense-description"
-              />
+                placeholder={lang === 'mr' ? 'उदा: धुलाई सेवा' : 'e.g. Laundry service'} data-testid="expense-description" />
             </div>
             <div>
-              <label className="text-xs font-bold text-zinc-400 mb-1 block">
-                {lang === 'mr' ? 'रक्कम' : 'Amount'}
-              </label>
-              <input
-                type="number"
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm(prev => ({...prev, amount: parseFloat(e.target.value) || 0}))}
-                className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none"
-                data-testid="expense-amount"
-              />
+              <label className="text-xs font-bold text-zinc-400 mb-1 block">{lang === 'mr' ? 'रक्कम' : 'Amount'}</label>
+              <input type="number" value={expenseForm.amount} onChange={(e) => setExpenseForm(prev => ({...prev, amount: parseFloat(e.target.value) || 0}))}
+                className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="expense-amount" />
             </div>
-            <button
-              onClick={handleAddExpense}
-              className="bg-[#22C55E] text-white h-14 rounded-xl flex items-center justify-center gap-2 w-full font-bold text-lg active:scale-95 transition-transform"
-              data-testid="submit-expense-btn"
-            >
-              <Receipt size={20} weight="bold" />
-              {t('submit')}
+            <button onClick={handleAddExpense}
+              className="bg-[#22C55E] text-white h-14 rounded-xl flex items-center justify-center gap-2 w-full font-bold text-lg active:scale-95 transition-transform" data-testid="submit-expense-btn">
+              <Receipt size={20} weight="bold" /> {t('submit')}
             </button>
           </div>
         )}
@@ -262,9 +295,7 @@ export default function GallaPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${
-                    txn.type === 'cash' ? 'bg-[#DCFCE7] text-[#14532D]' : 'bg-blue-50 text-blue-700'
-                  }`}>
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${txn.type === 'cash' ? 'bg-[#DCFCE7] text-[#14532D]' : 'bg-blue-50 text-blue-700'}`}>
                     {txn.type?.toUpperCase()}
                   </span>
                   <span className="font-black text-[#22C55E]">+₹{txn.amount}</span>
@@ -280,9 +311,7 @@ export default function GallaPage() {
         {/* Expenses List */}
         {summary?.expenses?.length > 0 && (
           <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4">
-            <span className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500 mb-3 block">
-              {t('expenses')}
-            </span>
+            <span className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500 mb-3 block">{t('expenses')}</span>
             <div className="space-y-2">
               {summary.expenses.map((exp, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-50 last:border-0">

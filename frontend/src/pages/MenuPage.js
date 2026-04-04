@@ -4,7 +4,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   SquaresFour, Wallet, ChartLineUp, FileText, WhatsappLogo, 
-  Translate, SignOut, X, UserCircle, Eye, ClipboardText, Bell
+  Translate, SignOut, X, UserCircle, Eye, ClipboardText, Bell,
+  Buildings, Plugs
 } from '@phosphor-icons/react';
 
 export default function MenuPage() {
@@ -18,6 +19,8 @@ export default function MenuPage() {
     { icon: Wallet, label: t('galla'), path: '/galla', show: true },
     { icon: ClipboardText, label: lang === 'mr' ? 'शिफ्ट हँडओव्हर' : 'Shift Handover', path: '/shift-handover', show: true },
     { icon: Bell, label: lang === 'mr' ? 'पाहुणे विनंत्या' : 'Guest Requests', path: '/requests', show: true },
+    { icon: Buildings, label: lang === 'mr' ? 'रूम व्यवस्थापन' : 'Room Management', path: '/room-management', show: isOwner },
+    { icon: Plugs, label: lang === 'mr' ? 'चॅनेल मॅनेजर' : 'Channel Manager', path: '/channel-manager', show: isOwner },
     { icon: Eye, label: lang === 'mr' ? 'रिमोट कॅशबॉक्स' : 'Remote Cashbox', path: '/remote-cashbox', show: isOwner },
     { icon: ChartLineUp, label: t('analytics'), path: '/analytics', show: isOwner },
     { icon: FileText, label: t('form_c'), path: '/formc', show: true },

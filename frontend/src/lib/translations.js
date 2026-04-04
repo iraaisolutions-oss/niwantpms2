@@ -118,6 +118,20 @@ const translations = {
   "pending": { mr: "प्रलंबित", en: "Pending" },
   "resolved": { mr: "पूर्ण", en: "Resolved" },
   "towel": { mr: "टॉवेल", en: "Towel" },
+  "room_management": { mr: "रूम व्यवस्थापन", en: "Room Management" },
+  "channel_manager": { mr: "चॅनेल मॅनेजर", en: "Channel Manager" },
+  "booking_source": { mr: "बुकिंग स्रोत", en: "Booking Source" },
+  "commission": { mr: "कमिशन", en: "Commission" },
+  "net_revenue": { mr: "निव्वळ महसूल", en: "Net Revenue" },
+  "total_bookings": { mr: "एकूण बुकिंग्ज", en: "Total Bookings" },
+  "sync": { mr: "सिंक", en: "Sync" },
+  "active": { mr: "सक्रिय", en: "Active" },
+  "inactive": { mr: "निष्क्रिय", en: "Inactive" },
+  "add_channel": { mr: "चॅनेल जोडा", en: "Add Channel" },
+  "hotel_settings": { mr: "हॉटेल सेटिंग्ज", en: "Hotel Settings" },
+  "wifi_details": { mr: "WiFi माहिती", en: "WiFi Details" },
+  "hotel_rules": { mr: "हॉटेल नियम", en: "Hotel Rules" },
+  "auto_whatsapp": { mr: "ऑटो WhatsApp", en: "Auto WhatsApp" },
 };
 
 export default translations;
