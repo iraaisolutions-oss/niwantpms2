@@ -40,22 +40,32 @@ Build the "Digital Register" Hotel Management System (HMS) - a Marathi-first, mo
 - Audit logging for rate changes
 - Revenue leakage detection (rooms in cleaning >10hrs)
 
+## Phase 2 Implemented (2026-04-04)
+- Remote Cashbox: Owner sees live galla from anywhere with 15s auto-refresh
+- Shift Handover: Staff completes shift, generates summary, mocks WhatsApp to owner
+- Daily Auto Summary: One-tap daily report generation sent to owner via WhatsApp (mocked)
+- QR Digital Bell: Public guest page (/qr/:roomNumber) for water/cleaning/towel/bill requests
+- Staff Request Board: View and resolve pending QR requests
+- Voice Expense: Parse text like "200 rupaye laundry" into categorized expense
+- PDF Invoice: Print-ready invoice generation from room detail page
+- Add Advance: Quick advance payment from room detail
+- IndexedDB offline storage with Dexie (rooms, bookings, pending actions cache)
+- PWA manifest for Add to Home Screen
+- Offline sync queue for pending actions
+
 ## Prioritized Backlog
 ### P0 (Next)
-- Add Meta WhatsApp Business API (needs credentials)
-- Offline-first with IndexedDB + Service Worker sync
-- PWA manifest + Add to Home Screen
+- Add Meta WhatsApp Business API credentials to activate all mocked messages
+- Service Worker for true offline caching of static assets
 
 ### P1
-- In-Room QR "Digital Bell" for guest requests
-- Voice-to-text expense logging
-- Receipt photo upload for expenses
-- OTA channel sync (MMT, Goibibo)
-- PDF invoice generation
+- OTA channel sync (MakeMyTrip, Goibibo)
+- UPI Soundbox integration
+- Receipt photo upload for expenses (object storage)
+- Advanced calendar heatmap view for occupancy
 
 ### P2
-- UPI Soundbox integration
-- Advanced occupancy heatmap with calendar view
-- Staff response time tracking for QR requests
 - Multi-tenancy for multiple hotel properties
 - Password reset flow
+- Staff response time tracking for QR requests
+- Guest review/feedback collection
