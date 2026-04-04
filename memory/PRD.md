@@ -1,71 +1,69 @@
-# Digital Register HMS - PRD
+# Digital Register - Hotel Management System (HMS)
 
 ## Original Problem Statement
-Build the "Digital Register" Hotel Management System (HMS) - a Marathi-first, mobile-optimized tool for Indian budget hotels with "Big Buttons, Zero Typing" philosophy, Traffic Light room status, offline-first architecture, and automated Indian billing logic.
+Build a "Digital Register" Hotel Management System. Marathi-first, mobile-optimized PWA for Indian budget hotels. Core philosophy: "Big Buttons, Zero Typing", Traffic Light Logic for room dashboard, simulated Aadhar OCR, automated billing, Digital Galla, WhatsApp engine (mocked), Form C Export, and offline-first capabilities.
 
-## Architecture
-- **Backend**: FastAPI + MongoDB (motor) on port 8001
-- **Frontend**: React + Tailwind CSS + Shadcn UI + Phosphor Icons on port 3000
-- **Database**: MongoDB with collections: users, rooms, bookings, guests, transactions, expenses, whatsapp_logs, form_c_exports, audit_logs
-- **Auth**: JWT Bearer tokens with Staff/Owner roles
+## Tech Stack
+- **Frontend**: React, Tailwind CSS, Shadcn UI, Phosphor Icons, PWA
+- **Backend**: FastAPI, Motor (Async MongoDB), JWT Auth
+- **Database**: MongoDB
 
 ## User Personas
-1. **Hotel Chotu/Staff** - Low tech-literacy reception staff. Needs big buttons, Marathi UI, fast check-in
-2. **Hotel Owner** - Remote monitoring. Needs analytics, revenue tracking, audit logs
+- **Owner (मालक)**: Full access - analytics, room management, channel manager, remote cashbox, settings
+- **Staff (कर्मचारी)**: Operational access - dashboard, check-in/out, galla, expenses, guest requests
 
 ## Core Requirements
-- 22-room dashboard with Traffic Light color coding (Green=Clean, Red=Occupied, Yellow=Cleaning)
-- Marathi-first UI with English toggle
-- Check-in/Check-out workflow with Aadhar camera upload (simulated OCR)
-- Automated billing: Early Check-In (<4hrs = Full Day), Late Check-Out (5hr grace), Extra Guest +₹200
-- Digital Galla: Cash vs UPI tracking, shift handover summaries
-- WhatsApp Engine (MOCKED - ready for Meta API credentials)
-- Form C government export (CSV for police portal)
-- Owner analytics: Occupancy heatmap, revenue leakage alerts, staff performance
-- Audit logs for rate changes
-- Offline banner for internet outages
+- [x] JWT Auth with role-based access (Owner/Staff)
+- [x] 22-room interactive dashboard with Traffic Light Logic (Green/Red/Yellow)
+- [x] Check-in/Check-out flows with billing rules (Early check-in, Late check-out, Extra guest charges)
+- [x] Digital Galla (Cashbox) with expense tracking
+- [x] Mocked WhatsApp messaging engine
+- [x] Form C Export (CSV)
+- [x] Marathi-English language toggle
+- [x] PWA Manifest & IndexedDB setup
+- [x] Remote Cashbox for owners
+- [x] Shift Handover
+- [x] QR Digital Bell for guest requests
 
-## What's Been Implemented (2026-04-04)
-- Full JWT auth with Owner/Staff roles and admin seeding
-- 22-room interactive dashboard with Traffic Light grid
-- Complete check-in flow with Aadhar OCR simulation, guest details, payment
-- Check-out flow with billing calculation, additional charges, discounts
-- Bill preview with live calculation
-- Digital Galla with Cash/UPI tracking, expense management
-- Owner analytics dashboard with occupancy, revenue, leakage alerts, staff stats
-- Form C export with CSV download
-- WhatsApp message logs (mocked)
-- Marathi/English language toggle throughout
-- Bottom navigation with role-based tabs
-- Audit logging for rate changes
-- Revenue leakage detection (rooms in cleaning >10hrs)
+## Phase 3 Features (Completed Feb 2026)
+- [x] **Auto-send WhatsApp on Check-in**: Welcome message + WiFi details + Hotel Rules (3 messages auto-sent)
+- [x] **Owner Room Management**: Add/Edit/Delete rooms (room number, floor, type, rate) - Owner only
+- [x] **Voice Expense (Web Speech API)**: Mic button records voice → speech-to-text → parse expense. Fallback to text input.
+- [x] **Full Channel Manager**: 5-tab interface (Overview, Channels, Rates, Bookings, Sync) with OTA integration simulation
+- [x] **OCR Scan Fix**: Consistent demo data on scan instead of random garbage
+- [x] **Booking Source Tracking**: Channel selector on check-in (Walk-in + OTAs)
+- [x] **Hotel Settings API**: WiFi name/password, hotel rules, configurable by owner
 
-## Phase 2 Implemented (2026-04-04)
-- Remote Cashbox: Owner sees live galla from anywhere with 15s auto-refresh
-- Shift Handover: Staff completes shift, generates summary, mocks WhatsApp to owner
-- Daily Auto Summary: One-tap daily report generation sent to owner via WhatsApp (mocked)
-- QR Digital Bell: Public guest page (/qr/:roomNumber) for water/cleaning/towel/bill requests
-- Staff Request Board: View and resolve pending QR requests
-- Voice Expense: Parse text like "200 rupaye laundry" into categorized expense
-- PDF Invoice: Print-ready invoice generation from room detail page
-- Add Advance: Quick advance payment from room detail
-- IndexedDB offline storage with Dexie (rooms, bookings, pending actions cache)
-- PWA manifest for Add to Home Screen
-- Offline sync queue for pending actions
+## Key API Endpoints
+- Auth: POST /api/auth/login, /api/auth/register, GET /api/auth/me
+- Rooms: GET /api/rooms, PUT /api/rooms/{room_number}, GET /api/rooms/{room_number}
+- Room Management: POST/PUT/DELETE /api/rooms/manage/{room_number}
+- Bookings: POST /api/bookings/checkin, /api/bookings/checkout, GET /api/bookings
+- Galla: GET /api/galla/summary, GET /api/galla/remote
+- Expenses: POST /api/expenses, POST /api/expenses/voice
+- Channels: GET/POST /api/channels, PUT/DELETE /api/channels/{id}
+- Channel Rates: GET/POST /api/channels/rates
+- Channel Bookings: GET /api/channels/bookings
+- Channel Sync: POST /api/channels/sync
+- Channel Analytics: GET /api/channels/analytics
+- Settings: GET/PUT /api/settings
+- WhatsApp: POST /api/whatsapp/send, GET /api/whatsapp/logs
+- Form C: GET /api/formc/export
+- QR Bell: POST /api/qr/request, GET /api/qr/requests
 
-## Prioritized Backlog
-### P0 (Next)
-- Add Meta WhatsApp Business API credentials to activate all mocked messages
-- Service Worker for true offline caching of static assets
+## Database Collections
+- users, rooms, bookings, guests, transactions, expenses, whatsapp_logs, settings, channels, channel_rates, form_c_exports, shift_handovers, qr_requests, audit_logs
 
-### P1
-- OTA channel sync (MakeMyTrip, Goibibo)
-- UPI Soundbox integration
-- Receipt photo upload for expenses (object storage)
-- Advanced calendar heatmap view for occupancy
+## Seeded Data
+- 22 rooms (101-122), 2 users (owner + staff), 5 OTA channels (OYO 25%, MakeMyTrip 20%, Booking.com 15%, Agoda 18%, Goibibo 20%), Hotel settings with WiFi and rules
 
-### P2
-- Multi-tenancy for multiple hotel properties
-- Password reset flow
-- Staff response time tracking for QR requests
-- Guest review/feedback collection
+## Mocked Integrations
+- WhatsApp Business API (logs to DB with mocked_sent status)
+- Aadhar OCR (simulated - fills fixed demo data)
+- OTA Channel Sync (simulated bookings from random channels)
+
+## Backlog / Future Tasks
+- P1: Real Meta WhatsApp API integration (requires user credentials)
+- P2: Real Aadhar OCR integration
+- P2: Occupancy Calendar Heatmap
+- P3: Server.py refactoring into modular routers
