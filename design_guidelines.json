@@ -1,0 +1,119 @@
+{
+  "theme": "light",
+  "archetype": "Archetype 4: Swiss & High-Contrast (Utilitarian POS Variant)",
+  "design_philosophy": {
+    "core_principles": [
+      "Big Buttons, Zero Typing: Maximize touch targets (64px minimum), use pre-filled options over keyboard input.",
+      "Traffic Light Logic: Strict adherence to Green (Clean/Available), Red (Occupied), Yellow (Cleaning) for instant cognitive recognition.",
+      "Marathi-First: Primary labels in Marathi, with a seamless English toggle.",
+      "Control Room Density: Data must be scannable with zero decorative fluff."
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Manrope",
+      "body": "IBM Plex Sans"
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl tracking-tight font-black",
+      "h2": "text-2xl md:text-3xl tracking-tight font-bold",
+      "h3": "text-xl font-bold",
+      "body": "text-base md:text-lg leading-relaxed font-medium",
+      "button": "text-lg font-bold uppercase tracking-[0.05em]",
+      "label": "text-xs md:text-sm uppercase tracking-[0.1em] font-bold text-gray-500"
+    }
+  },
+  "colors": {
+    "background": {
+      "base": "#F4F4F5",
+      "surface": "#FFFFFF",
+      "glass": "bg-white/90 backdrop-blur-xl border-b border-zinc-200"
+    },
+    "text": {
+      "primary": "#09090B",
+      "secondary": "#52525B",
+      "inverse": "#FFFFFF"
+    },
+    "status_traffic_light": {
+      "green_clean": {
+        "bg": "#22C55E",
+        "surface": "#DCFCE7",
+        "border": "#16A34A",
+        "text": "#14532D"
+      },
+      "red_occupied": {
+        "bg": "#EF4444",
+        "surface": "#FEE2E2",
+        "border": "#DC2626",
+        "text": "#7F1D1D"
+      },
+      "yellow_cleaning": {
+        "bg": "#F59E0B",
+        "surface": "#FEF3C7",
+        "border": "#D97706",
+        "text": "#78350F"
+      }
+    },
+    "brand": {
+      "primary": "#09090B",
+      "accent": "#2563EB"
+    }
+  },
+  "spacing_and_layout": {
+    "grid_mode": "MODE B: THE CONTROL ROOM GRID",
+    "touch_targets": "Minimum 64px (h-16) height for all interactive elements to prevent miss-clicks.",
+    "room_grid": "grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 md:gap-4",
+    "padding": {
+      "container": "p-4 md:p-8",
+      "card": "p-4 md:p-6"
+    }
+  },
+  "components": {
+    "room_card": {
+      "style": "Flat solid background, 2px border, rounded-2xl flex flex-col items-center justify-center min-h-[120px] transition-transform active:scale-95",
+      "content_layout": "Massive Room Number (H2), Status Icon, Marathi Status Text. Colors map directly to Traffic Light logic."
+    },
+    "buttons": {
+      "primary": "bg-zinc-900 text-white h-16 rounded-xl flex items-center justify-center gap-2 w-full active:scale-95 transition-transform",
+      "status_action": "h-16 rounded-xl border-2 font-bold w-full flex items-center justify-center gap-2 active:scale-95 transition-transform"
+    },
+    "navigation": {
+      "mobile": "Fixed bottom navigation bar (h-20) for core actions (Dashboard, Galla, Profile) to support thumb reachability.",
+      "desktop": "Left sidebar or top header with clear Language Toggle (मराठी / EN)."
+    },
+    "forms": {
+      "style": "Avoid native inputs where possible. Use large Tap-to-Select grids. Aadhar OCR should use a massive full-width camera capture button."
+    }
+  },
+  "motion": {
+    "hover": "Minimal hover effects. Focus entirely on touch states.",
+    "tap": "scale-[0.97] on all buttons and cards for immediate physical feedback.",
+    "transitions": "transition-all duration-150 ease-out"
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "usage_rules": "Use 'Bold' or 'Duotone' weights. Icons MUST accompany all text labels for low-literacy users."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/25e8304c-4eac-484f-8ec2-e513751b16a0/images/9148dc0319acba339499e9dcbc20487d0ecbd50ca89a1fe7fc319fd6937ed968.png",
+        "category": "login_background",
+        "description": "Clean abstract geometric pattern for the login screen and Owner's Mirror background to give a premium, structured feel."
+      }
+    ]
+  },
+  "accessibility": {
+    "contrast": "Strict adherence to high contrast. Colored surfaces (Red/Green/Yellow) MUST use their respective dark text variants for APCA compliance.",
+    "testing_attributes": "All buttons and interactive cards MUST have a data-testid attribute (e.g., data-testid='room-101-card')."
+  },
+  "instructions_to_main_agent": [
+    "Install @phosphor-icons/react for iconography.",
+    "Construct the 22-room dashboard as the default root view.",
+    "Implement 'Big Buttons, Zero Typing': standard button height is h-16 (64px), text sizes should be large.",
+    "Apply strict Traffic Light coloring to the Room Cards. DO NOT use generic Shadcn cards for rooms; build raw HTML/Tailwind divs for precise color control.",
+    "Create a robust dictionary/context provider for the Marathi/English toggle.",
+    "Use standard browser APIs (navigator.mediaDevices) for the Aadhar Camera Upload simulation.",
+    "For Offline-First, ensure the architecture supports IndexedDB (e.g., using Dexie.js or standard IDB)."
+  ]
+}
