@@ -3,7 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { Broom, User, CheckCircle, ArrowRight, Warning } from '@phosphor-icons/react';
+import { Broom, User, CheckCircle, ArrowRight, Warning, Drop } from '@phosphor-icons/react';
 
 export default function DashboardPage() {
   const { t, lang } = useLanguage();
@@ -13,6 +13,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [longPressTimer, setLongPressTimer] = useState(null);
   const [pressedRoom, setPressedRoom] = useState(null);
+  const [showFresh, setShowFresh] = useState(null);
+  const [freshForm, setFreshForm] = useState({ guest_name: '', guest_phone: '' });
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const fetchRooms = useCallback(async () => {
@@ -45,6 +47,18 @@ export default function DashboardPage() {
       navigate(`/checkin/${room.room_number}`);
     } else if (room.status === 'occupied') {
       navigate(`/room/${room.room_number}`);
+    }
+  };
+
+  const handleFreshService = async (roomNumber) => {
+    if (!freshForm.guest_name || !freshForm.guest_phone) return;
+    try {
+      await api.post('/bookings/fresh', { room_number: roomNumber, ...freshForm });
+      setShowFresh(null);
+      setFreshForm({ guest_name: '', guest_phone: '' });
+      fetchRooms();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed');
     }
   };
 
@@ -99,6 +113,14 @@ export default function DashboardPage() {
     }
   };
 
+  const getRoomTypeLabel = (type) => {
+    switch (type) {
+      case 'ac_deluxe': return 'AC DLX';
+      case 'non_ac_deluxe': return 'DLX';
+      default: return 'STD';
+    }
+  };
+
   const stats = {
     total: rooms.length,
     clean: rooms.filter(r => r.status === 'clean').length,
@@ -129,7 +151,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="font-heading text-2xl md:text-3xl font-bold tracking-tight text-zinc-900">
-              {t('digital_register')}
+              Nivant Lodge
             </h1>
             <p className="text-zinc-500 text-sm font-medium">
               {t('welcome')}, {user?.name || 'User'}
@@ -190,9 +212,9 @@ export default function DashboardPage() {
                 </span>
 
                 {/* Room Type Badge */}
-                {room.room_type === 'deluxe' && (
+                {room.room_type !== 'standard' && (
                   <span className="absolute top-1 right-1 text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded">
-                    {t('deluxe')}
+                    {getRoomTypeLabel(room.room_type)}
                   </span>
                 )}
 
@@ -218,6 +240,39 @@ export default function DashboardPage() {
             );
           })}
         </div>
+
+        {/* Fresh Service Quick Button */}
+        <div className="mt-4">
+          <p className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500 mb-2">
+            {lang === 'mr' ? 'फ्रेश सर्व्हिस (30 मिनिटे · ₹200)' : 'Fresh Service (30 min · ₹200)'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {rooms.filter(r => r.status === 'clean').slice(0, 6).map(r => (
+              <button key={r.room_number} onClick={() => setShowFresh(r.room_number)}
+                className="px-4 h-10 rounded-xl bg-blue-50 border-2 border-blue-200 text-blue-700 font-bold text-sm active:scale-95 transition-transform" data-testid={`fresh-room-${r.room_number}`}>
+                <Drop size={14} weight="bold" className="inline mr-1" />{r.room_number}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Fresh Service Modal */}
+        {showFresh && (
+          <div className="fixed inset-0 bg-black/50 flex items-end z-50" onClick={() => setShowFresh(null)}>
+            <div className="bg-white w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()} data-testid="fresh-modal">
+              <p className="font-bold text-lg">{lang === 'mr' ? 'फ्रेश सर्व्हिस' : 'Fresh Service'} — {lang === 'mr' ? 'रूम' : 'Room'} {showFresh}</p>
+              <p className="text-sm text-zinc-500">{lang === 'mr' ? '30 मिनिटे · ₹200' : '30 minutes · ₹200'}</p>
+              <input type="text" value={freshForm.guest_name} onChange={e => setFreshForm(p => ({...p, guest_name: e.target.value}))}
+                placeholder={lang === 'mr' ? 'पाहुण्याचे नाव' : 'Guest Name'} className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="fresh-guest-name" />
+              <input type="tel" value={freshForm.guest_phone} onChange={e => setFreshForm(p => ({...p, guest_phone: e.target.value}))}
+                placeholder={lang === 'mr' ? 'फोन' : 'Phone'} className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="fresh-guest-phone" />
+              <button onClick={() => handleFreshService(showFresh)} disabled={!freshForm.guest_name || !freshForm.guest_phone}
+                className="w-full h-14 rounded-xl bg-[#2563EB] text-white font-bold text-lg active:scale-95 transition-transform disabled:opacity-50" data-testid="fresh-submit-btn">
+                {lang === 'mr' ? 'फ्रेश बुक करा · ₹200' : 'Book Fresh · ₹200'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

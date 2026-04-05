@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../lib/api';
-import { Camera, UserPlus, ArrowLeft, IdentificationCard, CurrencyInr } from '@phosphor-icons/react';
+import { Camera, UserPlus, ArrowLeft, IdentificationCard, CurrencyInr, CopySimple } from '@phosphor-icons/react';
 
 export default function CheckInPage() {
   const { t, lang } = useLanguage();
@@ -11,15 +11,19 @@ export default function CheckInPage() {
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [cameraMode, setCameraMode] = useState(null); // 'aadhar' | 'face'
   const [aadharCaptured, setAadharCaptured] = useState(false);
+  const [faceCaptured, setFaceCaptured] = useState(false);
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const [channels, setChannels] = useState([]);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const canvasRef = useRef(null);
 
   const [form, setForm] = useState({
     guest_name: '',
     guest_phone: '',
+    whatsapp_number: '',
     aadhar_number: '',
     address: '',
     nationality: 'Indian',
@@ -28,7 +32,8 @@ export default function CheckInPage() {
     advance_paid: 0,
     payment_method: 'cash',
     id_type: 'Aadhar',
-    source_channel: 'walk-in'
+    source_channel: 'walk-in',
+    face_photo: null
   });
 
   useEffect(() => {
@@ -41,7 +46,7 @@ export default function CheckInPage() {
     try {
       const { data } = await api.get(`/rooms/${roomNumber}`);
       setRoom(data);
-      setForm(prev => ({ ...prev, rate_per_day: data.rate || 1000 }));
+      setForm(prev => ({ ...prev, rate_per_day: data.rate || 600 }));
     } catch (err) { console.error(err); }
   };
 
@@ -52,35 +57,53 @@ export default function CheckInPage() {
     } catch (err) { console.error(err); }
   };
 
-  const startCamera = async () => {
+  const startCamera = async (mode) => {
+    setCameraMode(mode);
     setShowCamera(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const facingMode = mode === 'face' ? 'user' : 'environment';
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; }
     } catch (err) {
       console.error('Camera access denied', err);
-      runOCRSimulation();
+      if (mode === 'aadhar') runOCRSimulation();
+      stopCamera();
     }
   };
 
   const stopCamera = () => {
     if (streamRef.current) { streamRef.current.getTracks().forEach(track => track.stop()); }
     setShowCamera(false);
+    setCameraMode(null);
   };
 
-  const captureAndOCR = () => {
-    setOcrProcessing(true);
-    stopCamera();
-    // Simulate OCR processing delay
-    setTimeout(() => {
-      runOCRSimulation();
-      setOcrProcessing(false);
-    }, 1500);
+  const capturePhoto = () => {
+    if (cameraMode === 'aadhar') {
+      setOcrProcessing(true);
+      stopCamera();
+      setTimeout(() => {
+        runOCRSimulation();
+        setOcrProcessing(false);
+      }, 1500);
+    } else if (cameraMode === 'face') {
+      // Capture face photo as base64
+      if (videoRef.current && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        canvas.width = 320;
+        canvas.height = 240;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 320, 240);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setForm(prev => ({ ...prev, face_photo: dataUrl }));
+        setFaceCaptured(true);
+      }
+      stopCamera();
+    }
   };
 
   const runOCRSimulation = () => {
-    // Fixed realistic OCR result instead of random data
     setForm(prev => ({
       ...prev,
       guest_name: 'Rajesh Kumar Patil',
@@ -89,14 +112,21 @@ export default function CheckInPage() {
       address: 'Flat 12, Sai Residency, Pune, Maharashtra 411001'
     }));
     setAadharCaptured(true);
-    setShowCamera(false);
+  };
+
+  const copyPhoneToWhatsApp = () => {
+    setForm(prev => ({ ...prev, whatsapp_number: prev.guest_phone }));
   };
 
   const handleSubmit = async () => {
     if (!form.guest_name || !form.guest_phone) return;
     setLoading(true);
     try {
-      await api.post('/bookings/checkin', { room_number: parseInt(roomNumber), ...form });
+      await api.post('/bookings/checkin', {
+        room_number: parseInt(roomNumber),
+        ...form,
+        whatsapp_number: form.whatsapp_number || form.guest_phone
+      });
       navigate('/');
     } catch (err) {
       console.error('Check-in failed', err);
@@ -110,6 +140,8 @@ export default function CheckInPage() {
 
   return (
     <div className="min-h-screen bg-[#F4F4F5] pb-24" data-testid="checkin-page">
+      <canvas ref={canvasRef} className="hidden" />
+
       {/* Header */}
       <div className="bg-white/90 backdrop-blur-xl border-b border-zinc-200 p-4 flex items-center gap-3 sticky top-0 z-10">
         <button onClick={() => navigate('/')} className="w-12 h-12 rounded-xl border-2 border-zinc-200 flex items-center justify-center active:scale-95 transition-transform" data-testid="checkin-back-btn">
@@ -118,7 +150,9 @@ export default function CheckInPage() {
         <div>
           <h1 className="font-heading text-xl font-bold tracking-tight">{t('check_in')} — {t('room_number')} {roomNumber}</h1>
           {room && (
-            <p className="text-sm text-zinc-500">{room.room_type === 'deluxe' ? t('deluxe') : t('standard')} · ₹{room.rate}/{lang === 'mr' ? 'दिवस' : 'day'}</p>
+            <p className="text-sm text-zinc-500">
+              {room.room_type === 'ac_deluxe' ? 'AC Deluxe' : room.room_type === 'non_ac_deluxe' ? 'Non-AC Deluxe' : t('standard')} · ₹{room.rate}/{lang === 'mr' ? 'दिवस' : 'day'}
+            </p>
           )}
         </div>
       </div>
@@ -130,73 +164,80 @@ export default function CheckInPage() {
             {lang === 'mr' ? 'बुकिंग स्रोत' : 'Booking Source'}
           </label>
           <div className="flex flex-wrap gap-2" data-testid="channel-selector">
-            <button
-              onClick={() => updateField('source_channel', 'walk-in')}
+            <button onClick={() => updateField('source_channel', 'walk-in')}
               className={`px-4 h-11 rounded-xl border-2 font-bold text-sm active:scale-95 transition-transform ${
                 form.source_channel === 'walk-in' ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200'
-              }`}
-              data-testid="source-walkin"
-            >
-              Walk-in
-            </button>
+              }`} data-testid="source-walkin">Walk-in</button>
             {channels.map(ch => (
-              <button
-                key={ch.channel_id}
-                onClick={() => updateField('source_channel', ch.channel_id)}
+              <button key={ch.channel_id} onClick={() => updateField('source_channel', ch.channel_id)}
                 className={`px-4 h-11 rounded-xl border-2 font-bold text-sm active:scale-95 transition-transform ${
                   form.source_channel === ch.channel_id ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200'
-                }`}
-                data-testid={`source-${ch.channel_id}`}
-              >
-                {ch.name}
-              </button>
+                }`} data-testid={`source-${ch.channel_id}`}>{ch.name}</button>
             ))}
           </div>
         </div>
 
-        {/* Aadhar OCR Scanner */}
-        <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4">
-          <label className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500 mb-3 block">{t('scan_aadhar')}</label>
-          
-          {ocrProcessing ? (
-            <div className="w-full h-20 rounded-xl bg-blue-50 border-2 border-blue-200 flex items-center justify-center gap-3" data-testid="ocr-processing">
-              <div className="w-6 h-6 border-3 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-              <span className="font-bold text-blue-700">{lang === 'mr' ? 'OCR प्रोसेसिंग...' : 'Processing Aadhar...'}</span>
+        {/* Camera View (shared for Aadhar & Face) */}
+        {showCamera && (
+          <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4 space-y-3">
+            <label className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500">
+              {cameraMode === 'face' ? (lang === 'mr' ? 'फोटो काढा' : 'Capture Face Photo') : t('scan_aadhar')}
+            </label>
+            <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              <div className="absolute inset-0 border-4 border-dashed border-white/50 m-4 rounded-lg" />
             </div>
-          ) : showCamera ? (
-            <div className="space-y-3">
-              <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                <div className="absolute inset-0 border-4 border-dashed border-white/50 m-4 rounded-lg" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={captureAndOCR} className="h-16 rounded-xl bg-[#22C55E] text-white font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-transform" data-testid="capture-aadhar-btn">
-                  <Camera size={24} weight="bold" /> {t('capture_photo')}
-                </button>
-                <button onClick={stopCamera} className="h-16 rounded-xl border-2 border-zinc-200 font-bold text-lg active:scale-95 transition-transform" data-testid="cancel-camera-btn">
-                  {t('cancel')}
-                </button>
-              </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={capturePhoto} className="h-16 rounded-xl bg-[#22C55E] text-white font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-transform" data-testid="capture-btn">
+                <Camera size={24} weight="bold" /> {t('capture_photo')}
+              </button>
+              <button onClick={stopCamera} className="h-16 rounded-xl border-2 border-zinc-200 font-bold text-lg active:scale-95 transition-transform" data-testid="cancel-camera-btn">
+                {t('cancel')}
+              </button>
             </div>
-          ) : (
-            <button
-              onClick={startCamera}
-              className={`w-full h-20 rounded-xl border-2 border-dashed flex items-center justify-center gap-3 text-lg font-bold active:scale-95 transition-transform ${
-                aadharCaptured ? 'border-[#16A34A] bg-[#DCFCE7] text-[#14532D]' : 'border-zinc-300 bg-zinc-50 text-zinc-600'
-              }`}
-              data-testid="start-camera-btn"
-            >
-              {aadharCaptured ? (
-                <><IdentificationCard size={28} weight="bold" /> {lang === 'mr' ? 'आधार स्कॅन झाले - खाली तपासा' : 'Aadhar Scanned - Verify Below'}</>
+          </div>
+        )}
+
+        {/* Aadhar OCR + Face Photo Buttons */}
+        {!showCamera && (
+          <div className="grid grid-cols-2 gap-3">
+            {/* Aadhar Scan */}
+            <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4">
+              {ocrProcessing ? (
+                <div className="h-20 rounded-xl bg-blue-50 border-2 border-blue-200 flex items-center justify-center gap-2" data-testid="ocr-processing">
+                  <div className="w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                  <span className="text-sm font-bold text-blue-700">{lang === 'mr' ? 'OCR...' : 'Processing...'}</span>
+                </div>
               ) : (
-                <><Camera size={28} weight="bold" /> {t('scan_aadhar')}</>
+                <button onClick={() => startCamera('aadhar')}
+                  className={`w-full h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 font-bold active:scale-95 transition-transform ${
+                    aadharCaptured ? 'border-[#16A34A] bg-[#DCFCE7] text-[#14532D]' : 'border-zinc-300 bg-zinc-50 text-zinc-600'
+                  }`} data-testid="start-aadhar-btn">
+                  <IdentificationCard size={24} weight="bold" />
+                  <span className="text-xs">{aadharCaptured ? (lang === 'mr' ? 'आधार स्कॅन' : 'Scanned') : t('scan_aadhar')}</span>
+                </button>
               )}
-            </button>
-          )}
-          <p className="text-xs text-zinc-400 mt-2 text-center">
-            {lang === 'mr' ? 'OCR सिम्युलेटेड — माहिती तपासा आणि संपादित करा' : 'OCR Simulated — Verify and edit details below'}
-          </p>
-        </div>
+            </div>
+
+            {/* Face Photo */}
+            <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4">
+              {faceCaptured && form.face_photo ? (
+                <div className="relative h-20 rounded-xl overflow-hidden border-2 border-[#16A34A]" data-testid="face-preview">
+                  <img src={form.face_photo} alt="Face" className="w-full h-full object-cover" />
+                  <button onClick={() => { setFaceCaptured(false); updateField('face_photo', null); }}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">X</button>
+                </div>
+              ) : (
+                <button onClick={() => startCamera('face')}
+                  className="w-full h-20 rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 text-zinc-600 flex flex-col items-center justify-center gap-1 font-bold active:scale-95 transition-transform"
+                  data-testid="start-face-btn">
+                  <Camera size={24} weight="bold" />
+                  <span className="text-xs">{lang === 'mr' ? 'फोटो काढा' : 'Face Photo'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Guest Details */}
         <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4 space-y-4">
@@ -207,9 +248,22 @@ export default function CheckInPage() {
               className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="guest-name-input" />
           </div>
           <div>
-            <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('phone')}</label>
+            <label className="text-xs font-bold text-zinc-400 mb-1 block">{lang === 'mr' ? 'प्राथमिक फोन' : 'Primary Phone'}</label>
             <input type="tel" value={form.guest_phone} onChange={(e) => updateField('guest_phone', e.target.value)}
               className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="guest-phone-input" />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-zinc-400 mb-1 block">{lang === 'mr' ? 'WhatsApp नंबर' : 'WhatsApp Number'}</label>
+            <div className="flex gap-2">
+              <input type="tel" value={form.whatsapp_number} onChange={(e) => updateField('whatsapp_number', e.target.value)}
+                placeholder={lang === 'mr' ? 'वेगळा असल्यास भरा' : 'If different from primary'}
+                className="flex-1 h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="whatsapp-number-input" />
+              <button onClick={copyPhoneToWhatsApp}
+                className="h-14 px-4 rounded-xl border-2 border-zinc-200 flex items-center gap-1 active:scale-95 transition-transform text-sm font-bold text-zinc-600"
+                data-testid="copy-phone-btn">
+                <CopySimple size={18} weight="bold" /> {lang === 'mr' ? 'कॉपी' : 'Copy'}
+              </button>
+            </div>
           </div>
           <div>
             <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('aadhar')}</label>
@@ -228,14 +282,9 @@ export default function CheckInPage() {
                 <button key={n} onClick={() => updateField('num_guests', n)}
                   className={`w-14 h-14 rounded-xl border-2 font-bold text-xl active:scale-95 transition-transform ${
                     form.num_guests === n ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200'
-                  }`} data-testid={`guest-count-${n}`}>
-                  {n}
-                </button>
+                  }`} data-testid={`guest-count-${n}`}>{n}</button>
               ))}
             </div>
-            {form.num_guests > 1 && (
-              <p className="text-xs text-amber-600 mt-1 font-medium">+₹200 {lang === 'mr' ? 'प्रत्येक अतिरिक्त पाहुण्यासाठी' : 'per extra guest/day'}</p>
-            )}
           </div>
         </div>
 
@@ -261,42 +310,34 @@ export default function CheckInPage() {
               <button onClick={() => updateField('payment_method', 'cash')}
                 className={`h-14 rounded-xl border-2 font-bold text-lg active:scale-95 transition-transform ${
                   form.payment_method === 'cash' ? 'bg-[#22C55E] text-white border-[#16A34A]' : 'bg-white text-zinc-600 border-zinc-200'
-                }`} data-testid="payment-cash-btn">
-                {t('cash')}
-              </button>
+                }`} data-testid="payment-cash-btn">{t('cash')}</button>
               <button onClick={() => updateField('payment_method', 'upi')}
                 className={`h-14 rounded-xl border-2 font-bold text-lg active:scale-95 transition-transform ${
                   form.payment_method === 'upi' ? 'bg-[#2563EB] text-white border-[#1D4ED8]' : 'bg-white text-zinc-600 border-zinc-200'
-                }`} data-testid="payment-upi-btn">
-                {t('upi')}
-              </button>
+                }`} data-testid="payment-upi-btn">{t('upi')}</button>
             </div>
           </div>
         </div>
 
-        {/* Billing Rules Info */}
+        {/* Billing Rules */}
         <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4">
-          <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">{lang === 'mr' ? 'बिलिंग नियम' : 'Billing Rules'}</p>
-          <p className="text-sm text-amber-600">{t('early_checkin_note')}</p>
-          <p className="text-sm text-amber-600">{t('late_checkout_note')}</p>
-          <p className="text-sm text-amber-600">{lang === 'mr' ? 'अतिरिक्त पाहुणे: बेस रेट + ₹200/व्यक्ती' : 'Extra guests: Base + ₹200/person'}</p>
+          <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">{lang === 'mr' ? 'निवांत लॉज नियम' : 'Nivant Lodge Rules'}</p>
+          <p className="text-sm text-amber-600">{lang === 'mr' ? 'चेक-इन/आउट: दुपारी 12:00' : 'Check-in/out: 12:00 PM'}</p>
+          <p className="text-sm text-amber-600">{lang === 'mr' ? '24 तासांपेक्षा जास्त = पूर्ण दिवस शुल्क' : 'Overstay beyond 24h = full day charge'}</p>
+          <p className="text-sm text-amber-600">{lang === 'mr' ? '12 PM आधी आगमन = ₹500 तात्पुरती खोली' : 'Early arrival before 12 PM = ₹500 temp room'}</p>
         </div>
 
         {/* Auto WhatsApp Info */}
         <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-4">
           <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-1">{lang === 'mr' ? 'ऑटो WhatsApp' : 'Auto WhatsApp'}</p>
-          <p className="text-sm text-green-600">{lang === 'mr' ? 'चेक-इन नंतर स्वागत, WiFi माहिती आणि हॉटेल नियम स्वयंचलितपणे पाठवले जातील' : 'Welcome, WiFi details & hotel rules will be auto-sent on check-in'}</p>
+          <p className="text-sm text-green-600">{lang === 'mr' ? 'स्वागत + WiFi + नियम + लवकर आगमन चेतावणी स्वयंचलितपणे पाठवले जाईल' : 'Welcome + WiFi + Rules + Early arrival warning auto-sent'}</p>
         </div>
 
-        {/* Submit Button */}
-        <button
-          onClick={handleSubmit}
-          disabled={loading || !form.guest_name || !form.guest_phone}
+        {/* Submit */}
+        <button onClick={handleSubmit} disabled={loading || !form.guest_name || !form.guest_phone}
           className="bg-zinc-900 text-white h-16 rounded-xl flex items-center justify-center gap-3 w-full active:scale-95 transition-transform text-lg font-bold uppercase tracking-[0.05em] disabled:opacity-50"
-          data-testid="checkin-submit-btn"
-        >
-          <UserPlus size={24} weight="bold" />
-          {loading ? t('loading') : t('check_in')}
+          data-testid="checkin-submit-btn">
+          <UserPlus size={24} weight="bold" /> {loading ? t('loading') : t('check_in')}
         </button>
       </div>
     </div>

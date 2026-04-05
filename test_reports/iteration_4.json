@@ -1,0 +1,115 @@
+{
+  "summary": "Completed comprehensive testing of Nivant Lodge overhaul features. Backend: 18/18 tests passed (100%). Frontend: All 13 features verified. Major changes from 'Digital Register Hotel' to 'Nivant Lodge' working correctly.",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "calculate_billing()",
+        "issue": "Current billing has 5-hour grace period (line 296-300). Requirements state 'no grace period - overstay = full day charge'. May need clarification if this is intentional.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Login Page",
+        "issues": ["Shows 'निवांत लॉज' (Marathi) by default - this is correct behavior as app defaults to Marathi language. English 'Nivant Lodge' shows when language is toggled."]
+      }
+    ]
+  },
+  
+  "passed_tests": [
+    "Backend: Owner login (admin@hotel.com / admin123) - 200 OK",
+    "Backend: Staff login (staff@hotel.com / staff123) - 200 OK",
+    "Backend: GET /api/rooms returns 22 rooms",
+    "Backend: Standard rooms (101,102,201-203,301-303) at ₹600",
+    "Backend: Non-AC Deluxe rooms (103,105-107) at ₹1000",
+    "Backend: Room 104 special rate ₹500",
+    "Backend: AC Deluxe rooms (204-206,304-306,404-406) at ₹1200",
+    "Backend: GET /api/settings returns hotel_name='Nivant Lodge'",
+    "Backend: Settings contain checkout rules",
+    "Backend: POST /api/bookings/fresh creates booking with total_amount=200, booking_type='fresh'",
+    "Backend: Check-in sends 3 WhatsApp messages (welcome, wifi, rules)",
+    "Backend: Aadhar stored unmasked (full number)",
+    "Backend: Face photo stored in guest record",
+    "Backend: Staff cannot access POST /api/rooms/manage (403)",
+    "Backend: Staff cannot access POST /api/channels (403)",
+    "Backend: Owner can access POST /api/rooms/manage",
+    "Backend: GET /api/bookings/history returns paginated results",
+    "Frontend: Login page shows 'Nivant Lodge' (निवांत लॉज in Marathi)",
+    "Frontend: Dashboard shows 'Nivant Lodge' title",
+    "Frontend: Room grid shows 22 rooms with correct types (DLX, AC DLX badges)",
+    "Frontend: Room rates displayed correctly (₹600, ₹500, ₹1000, ₹1200)",
+    "Frontend: Fresh Service section with room buttons (30 min · ₹200)",
+    "Frontend: Fresh Service modal opens correctly",
+    "Frontend: Check-in page has Booking Source selector (Walk-in + OTAs)",
+    "Frontend: Check-in page has Primary Phone input",
+    "Frontend: Check-in page has WhatsApp Number input",
+    "Frontend: Check-in page has Copy button for phone",
+    "Frontend: Check-in page has Face Photo capture button",
+    "Frontend: Check-in page has Aadhar scan button",
+    "Frontend: Galla page has 'Add Expense' button",
+    "Frontend: Galla page has 'Shift Handover' button",
+    "Frontend: Galla page has NO voice button (correctly removed)"
+  ],
+  
+  "test_report_links": [
+    "/app/backend/tests/test_nivant_lodge_overhaul.py",
+    "/app/test_reports/pytest/pytest_nivant_results.xml"
+  ],
+  
+  "action_items": [],
+  
+  "critical_code_review_comments": [
+    "Billing grace period: Current code has 5-hour grace (line 296-300 in server.py). Requirements say 'no grace period'. Clarify if this needs change.",
+    "Room type badge display: Standard rooms don't show badge (only DLX and AC DLX shown). This is intentional per code logic in DashboardPage.js line 215-219."
+  ],
+  
+  "updated_files": [
+    "/app/backend/tests/test_nivant_lodge_overhaul.py"
+  ],
+  
+  "success_rate": {
+    "backend": "100% (18/18 tests passed)",
+    "frontend": "100% (All 13 features verified)"
+  },
+  
+  "mocked_apis": {
+    "WhatsApp Business API": "Messages logged to DB with 'mocked_sent' status",
+    "Aadhar OCR": "Simulated - fills fixed demo data (Rajesh Kumar Patil)",
+    "OTA Channel Sync": "Simulated - creates random bookings from active channels"
+  },
+  
+  "test_credentials": {
+    "owner": "admin@hotel.com / admin123",
+    "staff": "staff@hotel.com / staff123"
+  },
+  
+  "seed_data_creation": "22 Nivant Lodge rooms seeded with correct types and rates. Hotel settings seeded with hotel_name='Nivant Lodge'.",
+  
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  
+  "context_for_next_testing_agent": "Nivant Lodge overhaul fully tested. All 13 features from requirements verified: 1) Room layout with 22 rooms (STD ₹600, Non-AC DLX ₹1000, Room 104 ₹500, AC DLX ₹1200), 2) Hotel settings with Nivant Lodge name, 3) Fresh Service (30 min ₹200), 4) WhatsApp auto-send (3 messages), 5) Aadhaar unmasked, 6) Face photo capture, 7) Primary phone + WhatsApp number + Copy button, 8) Booking source selector, 9) Voice button removed from Galla, 10) Emergent branding hidden via CSS, 11) Login shows Nivant Lodge, 12) Role-based access (staff gets 403), 13) Booking history paginated.",
+  
+  "features_verified": {
+    "room_layout": "✓ 22 rooms with correct types and rates",
+    "hotel_settings": "✓ hotel_name='Nivant Lodge', rules include checkout time",
+    "fresh_service": "✓ Creates booking_type='fresh' with total_amount=200",
+    "whatsapp_auto_send": "✓ 3 messages (welcome, wifi, rules) on check-in",
+    "aadhar_unmasked": "✓ Full Aadhar stored, not masked",
+    "face_photo": "✓ Stored in guest record as base64",
+    "phone_whatsapp_copy": "✓ Primary phone + WhatsApp number + Copy button",
+    "booking_source": "✓ Walk-in + OTA channels selector",
+    "voice_button_removed": "✓ No voice button in Galla page",
+    "emergent_branding_hidden": "✓ CSS hides [data-emergent] elements",
+    "nivant_lodge_branding": "✓ Login and Dashboard show Nivant Lodge",
+    "role_access": "✓ Staff gets 403 on owner-only endpoints",
+    "booking_history": "✓ Paginated results with total, page, limit"
+  }
+}

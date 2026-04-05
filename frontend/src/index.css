@@ -17,6 +17,15 @@ code {
         source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
+/* Hide Emergent branding */
+[data-emergent], .emergent-badge, a[href*="emergent"], div[class*="emergent"],
+iframe[src*="emergent"], div[style*="z-index: 2147483647"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 @layer base {
     :root {
         --background: 0 0% 100%;

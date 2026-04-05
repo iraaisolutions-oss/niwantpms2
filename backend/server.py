@@ -96,6 +96,7 @@ class CheckInInput(BaseModel):
     room_number: int
     guest_name: str
     guest_phone: str
+    whatsapp_number: Optional[str] = None
     aadhar_number: Optional[str] = None
     address: Optional[str] = None
     nationality: str = "Indian"
@@ -106,6 +107,7 @@ class CheckInInput(BaseModel):
     check_in_time: Optional[str] = None
     id_type: str = "Aadhar"
     source_channel: str = "walk-in"
+    face_photo: Optional[str] = None  # base64 encoded
 
 class CheckOutInput(BaseModel):
     booking_id: str
@@ -148,6 +150,12 @@ class QRRequestInput(BaseModel):
 
 class VoiceExpenseInput(BaseModel):
     text: str  # e.g., "100 rupaye laundry"
+
+class FreshServiceInput(BaseModel):
+    room_number: int
+    guest_name: str
+    guest_phone: str
+    payment_method: str = "cash"
 
 class HotelSettingsInput(BaseModel):
     hotel_name: Optional[str] = None
@@ -321,15 +329,7 @@ async def check_in(input: CheckInInput, request: Request):
         except ValueError:
             pass
 
-    # Mask Aadhar number (show only last 4)
-    masked_aadhar = None
-    if input.aadhar_number:
-        digits = input.aadhar_number.replace(" ", "").replace("-", "")
-        if len(digits) >= 4:
-            masked_aadhar = "XXXX-XXXX-" + digits[-4:]
-        else:
-            masked_aadhar = digits
-
+    # Store full Aadhar (unmasked) for Form C compliance
     booking_id = f"BK-{secrets.token_hex(4).upper()}"
     guest_id = f"G-{secrets.token_hex(4).upper()}"
 
@@ -337,8 +337,9 @@ async def check_in(input: CheckInInput, request: Request):
         "guest_id": guest_id,
         "name": input.guest_name,
         "phone": input.guest_phone,
-        "aadhar_number": masked_aadhar,
-        "aadhar_raw_last4": input.aadhar_number[-4:] if input.aadhar_number and len(input.aadhar_number) >= 4 else None,
+        "whatsapp_number": input.whatsapp_number or input.guest_phone,
+        "aadhar_number": input.aadhar_number,
+        "face_photo": input.face_photo,
         "address": input.address,
         "nationality": input.nationality,
         "id_type": input.id_type,
@@ -394,22 +395,23 @@ async def check_in(input: CheckInInput, request: Request):
         }}
     )
 
-    # Auto-send WhatsApp messages (MOCKED): Welcome + WiFi + Rules
+    # Auto-send WhatsApp messages (MOCKED): Welcome + WiFi + Rules + Early Arrival Warning
     settings = await db.settings.find_one({}, {"_id": 0}) or {}
-    wifi_name = settings.get("wifi_name", "HotelGuest")
-    wifi_pass = settings.get("wifi_password", "hotel1234")
-    hotel_rules = settings.get("hotel_rules", ["Check-out: 11 AM", "No smoking in rooms", "ID proof required"])
+    wifi_name = settings.get("wifi_name", "NivantLodge")
+    wifi_pass = settings.get("wifi_password", "nivant1234")
+    hotel_rules = settings.get("hotel_rules", ["Check-out: 12 PM", "No smoking", "ID required"])
+    wa_phone = input.whatsapp_number or input.guest_phone
 
     await db.whatsapp_logs.insert_one({
-        "phone": input.guest_phone,
+        "phone": wa_phone,
         "message_type": "welcome",
-        "content": f"Welcome {input.guest_name}! Room {input.room_number} is ready. We hope you enjoy your stay!",
+        "content": f"Welcome to Nivant Lodge, {input.guest_name}! Room {input.room_number} is ready for you.",
         "status": "mocked_sent",
         "booking_id": booking_id,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
     await db.whatsapp_logs.insert_one({
-        "phone": input.guest_phone,
+        "phone": wa_phone,
         "message_type": "wifi",
         "content": f"Wi-Fi Details:\nNetwork: {wifi_name}\nPassword: {wifi_pass}",
         "status": "mocked_sent",
@@ -418,9 +420,9 @@ async def check_in(input: CheckInInput, request: Request):
     })
     rules_text = "\n".join([f"- {r}" for r in hotel_rules])
     await db.whatsapp_logs.insert_one({
-        "phone": input.guest_phone,
+        "phone": wa_phone,
         "message_type": "rules",
-        "content": f"Hotel Rules:\n{rules_text}",
+        "content": f"Nivant Lodge Rules:\n{rules_text}\n\nIMPORTANT: Do NOT arrive before 12:00 PM. Early arrivals will be charged Rs.500 for a temporary regular room until 12:00 PM.",
         "status": "mocked_sent",
         "booking_id": booking_id,
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -1376,7 +1378,7 @@ async def get_invoice(booking_id: str, request: Request):
     invoice = {
         "invoice_id": f"INV-{booking_id}",
         "booking_id": booking_id,
-        "hotel_name": "Digital Register Hotel",
+        "hotel_name": "Nivant Lodge",
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "guest": {
             "name": booking.get("guest_name"),
@@ -1401,25 +1403,115 @@ async def get_invoice(booking_id: str, request: Request):
     }
     return invoice
 
+# ---------- FRESH SERVICE (30 min, ₹200) ----------
+@api_router.post("/bookings/fresh")
+async def fresh_service(input: FreshServiceInput, request: Request):
+    user = await get_current_user(request)
+    room = await db.rooms.find_one({"room_number": input.room_number}, {"_id": 0})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room["status"] == "occupied":
+        raise HTTPException(status_code=400, detail="Room is occupied")
+
+    booking_id = f"FR-{secrets.token_hex(4).upper()}"
+    booking_doc = {
+        "booking_id": booking_id,
+        "room_number": input.room_number,
+        "guest_name": input.guest_name,
+        "guest_phone": input.guest_phone,
+        "booking_type": "fresh",
+        "num_guests": 1,
+        "check_in": datetime.now(timezone.utc).isoformat(),
+        "check_out": None,
+        "rate_per_day": 200,
+        "total_amount": 200,
+        "advance_paid": 200,
+        "total_paid": 200,
+        "balance_due": 0,
+        "payment_method": input.payment_method,
+        "status": "active",
+        "source_channel": "walk-in",
+        "billing_notes": ["Fresh Service - 30 minutes - ₹200"],
+        "checked_in_by": user.get("name"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.bookings.insert_one(booking_doc)
+    await db.transactions.insert_one({
+        "transaction_id": f"TX-{secrets.token_hex(4).upper()}",
+        "booking_id": booking_id,
+        "amount": 200,
+        "type": input.payment_method,
+        "category": "fresh_service",
+        "description": f"Fresh Service - Room {input.room_number}",
+        "staff_id": user.get("_id"),
+        "staff_name": user.get("name"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    await db.rooms.update_one(
+        {"room_number": input.room_number},
+        {"$set": {
+            "status": "occupied",
+            "current_booking_id": booking_id,
+            "status_changed_at": datetime.now(timezone.utc).isoformat(),
+            "status_changed_by": user.get("name")
+        }}
+    )
+    booking_doc.pop("_id", None)
+    return booking_doc
+
+# ---------- BOOKING HISTORY (permanent ledger) ----------
+@api_router.get("/bookings/history")
+async def get_booking_history(request: Request, status: Optional[str] = None, page: int = 1, limit: int = 50):
+    await get_current_user(request)
+    query = {}
+    if status:
+        query["status"] = status
+    skip = (page - 1) * limit
+    total = await db.bookings.count_documents(query)
+    bookings = await db.bookings.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"bookings": bookings, "total": total, "page": page, "limit": limit}
+
 # ---------- SEED DATA ----------
 async def seed_rooms():
-    count = await db.rooms.count_documents({})
-    if count == 0:
-        rooms = []
-        for i in range(1, 23):  # 22 rooms
-            floor = 1 if i <= 8 else (2 if i <= 16 else 3)
-            rooms.append({
-                "room_number": 100 + i,
-                "floor": floor,
-                "room_type": "standard" if i <= 15 else "deluxe",
-                "status": "clean",
-                "rate": 1000.0 if i <= 15 else 1500.0,
-                "current_booking_id": None,
-                "status_changed_at": datetime.now(timezone.utc).isoformat(),
-                "status_changed_by": "system"
-            })
-        await db.rooms.insert_many(rooms)
-        logging.info("Seeded 22 rooms")
+    # Nivant Lodge room layout
+    nivant_rooms = [
+        # Standard (₹600)
+        {"room_number": 101, "floor": 1, "room_type": "standard", "rate": 600.0},
+        {"room_number": 102, "floor": 1, "room_type": "standard", "rate": 600.0},
+        {"room_number": 201, "floor": 2, "room_type": "standard", "rate": 600.0},
+        {"room_number": 202, "floor": 2, "room_type": "standard", "rate": 600.0},
+        {"room_number": 203, "floor": 2, "room_type": "standard", "rate": 600.0},
+        {"room_number": 301, "floor": 3, "room_type": "standard", "rate": 600.0},
+        {"room_number": 302, "floor": 3, "room_type": "standard", "rate": 600.0},
+        {"room_number": 303, "floor": 3, "room_type": "standard", "rate": 600.0},
+        # Non-AC Deluxe (₹1000), room 104 special (₹500)
+        {"room_number": 103, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
+        {"room_number": 104, "floor": 1, "room_type": "non_ac_deluxe", "rate": 500.0},
+        {"room_number": 105, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
+        {"room_number": 106, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
+        {"room_number": 107, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
+        # AC Deluxe (₹1200)
+        {"room_number": 204, "floor": 2, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 205, "floor": 2, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 206, "floor": 2, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 304, "floor": 3, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 305, "floor": 3, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 306, "floor": 3, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 404, "floor": 4, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 405, "floor": 4, "room_type": "ac_deluxe", "rate": 1200.0},
+        {"room_number": 406, "floor": 4, "room_type": "ac_deluxe", "rate": 1200.0},
+    ]
+    # Check if already migrated to Nivant layout
+    has_404 = await db.rooms.find_one({"room_number": 404})
+    if not has_404:
+        await db.rooms.delete_many({})
+        for r in nivant_rooms:
+            r["status"] = "clean"
+            r["current_booking_id"] = None
+            r["status_changed_at"] = datetime.now(timezone.utc).isoformat()
+            r["status_changed_by"] = "system"
+        await db.rooms.insert_many(nivant_rooms)
+        logging.info("Seeded 22 Nivant Lodge rooms")
 
 async def seed_admin():
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@hotel.com")
@@ -1475,23 +1567,28 @@ async def seed_channels():
         logging.info("Seeded 5 OTA channels")
 
 async def seed_hotel_settings():
-    existing = await db.settings.find_one({})
-    if not existing:
-        await db.settings.insert_one({
-            "hotel_name": "Digital Register Hotel",
-            "wifi_name": "HotelGuest",
-            "wifi_password": "hotel1234",
-            "hotel_rules": [
-                "Check-out time: 11:00 AM",
-                "No smoking in rooms",
-                "Visitors not allowed after 10 PM",
-                "ID proof required for all guests",
-                "No loud music after 10 PM"
-            ],
-            "welcome_message": "Welcome! We hope you have a pleasant stay.",
-            "checkout_message": "Thank you for staying! Please leave a Google review."
-        })
-        logging.info("Seeded hotel settings")
+    # Always update to Nivant Lodge settings
+    await db.settings.update_one({}, {"$set": {
+        "hotel_name": "Nivant Lodge",
+        "wifi_name": "NivantLodge",
+        "wifi_password": "nivant1234",
+        "hotel_rules": [
+            "Check-in / Check-out time: 12:00 PM",
+            "Overstay beyond 24 hours = full next day charge",
+            "Do NOT arrive before 12:00 PM",
+            "Early arrivals will be charged Rs.500 for temporary room until 12 PM",
+            "No smoking in rooms",
+            "Visitors not allowed after 10 PM",
+            "ID proof required for all guests",
+            "No loud music after 10 PM"
+        ],
+        "welcome_message": "Welcome to Nivant Lodge!",
+        "checkout_message": "Thank you for staying at Nivant Lodge! Please leave a review.",
+        "fresh_service_rate": 200,
+        "fresh_service_duration": 30,
+        "early_arrival_rate": 500
+    }}, upsert=True)
+    logging.info("Updated Nivant Lodge settings")
 
 @app.on_event("startup")
 async def startup():
