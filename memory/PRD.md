@@ -53,6 +53,18 @@ Build a Marathi-first, mobile-optimized PWA Hotel Management System for Nivant L
 - [x] Auto WhatsApp: Welcome + WiFi + Rules + Early arrival warning (₹500)
 - [x] Booking History endpoint with pagination
 
+### Phase 5 (Reservations) - Feb 2026
+- [x] Future booking/reservation system (reserve by room number + date)
+- [x] Guest search for returning customers (auto-fill from past bookings)
+- [x] Calendar view showing reservations (blue) and active bookings (red)
+- [x] List view with upcoming reservations and today's check-ins
+- [x] Advance payment at reservation time (cash/UPI)
+- [x] One-tap check-in from reservation
+- [x] Cancel reservation
+- [x] WhatsApp booking confirmation auto-sent
+- [x] Double-booking prevention (same room + same date blocked)
+- [x] Booking source selector on reservations
+
 ## Policies
 - Check-in/out: 12:00 PM
 - Overstay: >24h = full day charge, no grace
@@ -67,7 +79,7 @@ Build a Marathi-first, mobile-optimized PWA Hotel Management System for Nivant L
 ## Backlog / Future Tasks
 - P1: AC room allocation logic (≤2 guests → 205/305/405, >2 → 204/206/304/306/404/406)
 - P1: Room conversion (AC → Non-AC toggle)
-- P1: Future bookings with date selection + OTA sync
+- P1: Future booking sync to OTAs (when reserved, block on external platforms)
 - P1: Communication status tracking ("Delivered"/"Failed") + dashboard flag
 - P1: Manual resend WhatsApp button if undelivered
 - P2: Real Meta WhatsApp API integration
