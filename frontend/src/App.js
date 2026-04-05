@@ -17,6 +17,7 @@ import ShiftHandoverPage from './pages/ShiftHandoverPage';
 import { GuestQRPage, StaffRequestsPage } from './pages/QRBellPage';
 import RoomManagementPage from './pages/RoomManagementPage';
 import ChannelManagerPage from './pages/ChannelManagerPage';
+import ReservationsPage from './pages/ReservationsPage';
 import { syncPendingActions } from './lib/indexedDB';
 import api from './lib/api';
 import '@/App.css';
@@ -72,6 +73,7 @@ function AppRoutes() {
       <Route path="/requests" element={<ProtectedRoute><AppLayout><StaffRequestsPage /></AppLayout></ProtectedRoute>} />
       <Route path="/room-management" element={<ProtectedRoute><RoomManagementPage /></ProtectedRoute>} />
       <Route path="/channel-manager" element={<ProtectedRoute><ChannelManagerPage /></ProtectedRoute>} />
+      <Route path="/reservations" element={<ProtectedRoute><ReservationsPage /></ProtectedRoute>} />
       {/* Public QR page for guests - no auth */}
       <Route path="/qr/:roomNumber" element={<GuestQRPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

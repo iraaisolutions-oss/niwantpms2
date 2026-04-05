@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   SquaresFour, Wallet, ChartLineUp, FileText, WhatsappLogo, 
   Translate, SignOut, X, UserCircle, Eye, ClipboardText, Bell,
-  Buildings, Plugs
+  Buildings, Plugs, CalendarBlank
 } from '@phosphor-icons/react';
 
 export default function MenuPage() {
@@ -16,6 +16,7 @@ export default function MenuPage() {
 
   const menuItems = [
     { icon: SquaresFour, label: t('dashboard'), path: '/', show: true },
+    { icon: CalendarBlank, label: lang === 'mr' ? 'बुकिंग्ज' : 'Reservations', path: '/reservations', show: true },
     { icon: Wallet, label: t('galla'), path: '/galla', show: true },
     { icon: ClipboardText, label: lang === 'mr' ? 'शिफ्ट हँडओव्हर' : 'Shift Handover', path: '/shift-handover', show: true },
     { icon: Bell, label: lang === 'mr' ? 'पाहुणे विनंत्या' : 'Guest Requests', path: '/requests', show: true },

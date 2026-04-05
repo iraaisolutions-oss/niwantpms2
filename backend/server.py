@@ -188,6 +188,19 @@ class ChannelRateInput(BaseModel):
     room_type: str
     rate: float
 
+class ReservationInput(BaseModel):
+    room_number: int
+    guest_name: str
+    guest_phone: str
+    whatsapp_number: Optional[str] = None
+    check_in_date: str  # YYYY-MM-DD
+    num_guests: int = 1
+    rate_per_day: float
+    advance_paid: float = 0
+    payment_method: str = "cash"
+    source_channel: str = "walk-in"
+    notes: Optional[str] = None
+
 # ---------- AUTH ROUTES ----------
 @api_router.post("/auth/register")
 async def register(input: AuthInput, response: Response):
@@ -1399,6 +1412,204 @@ async def get_invoice(booking_id: str, request: Request):
         "status": booking["status"]
     }
     return invoice
+
+# ---------- GUEST SEARCH (for returning customers) ----------
+@api_router.get("/guests/search")
+async def search_guests(request: Request, q: str = ""):
+    await get_current_user(request)
+    if not q or len(q) < 2:
+        return []
+    guests = await db.guests.find(
+        {"$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"phone": {"$regex": q}}
+        ]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    seen = set()
+    unique = []
+    for g in guests:
+        key = g.get("phone", "")
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(g)
+    return unique[:10]
+
+# ---------- RESERVATIONS (Future Bookings) ----------
+@api_router.post("/bookings/reserve")
+async def create_reservation(input: ReservationInput, request: Request):
+    user = await get_current_user(request)
+    room = await db.rooms.find_one({"room_number": input.room_number}, {"_id": 0})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    existing = await db.bookings.find_one({
+        "room_number": input.room_number,
+        "check_in_date": input.check_in_date,
+        "status": "reserved"
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Room {input.room_number} already reserved for {input.check_in_date}")
+
+    booking_id = f"RV-{secrets.token_hex(4).upper()}"
+    booking_doc = {
+        "booking_id": booking_id,
+        "room_number": input.room_number,
+        "guest_name": input.guest_name,
+        "guest_phone": input.guest_phone,
+        "whatsapp_number": input.whatsapp_number or input.guest_phone,
+        "num_guests": input.num_guests,
+        "check_in_date": input.check_in_date,
+        "check_in": None,
+        "check_out": None,
+        "rate_per_day": input.rate_per_day,
+        "advance_paid": input.advance_paid,
+        "total_paid": input.advance_paid,
+        "balance_due": 0,
+        "total_amount": 0,
+        "payment_method": input.payment_method,
+        "status": "reserved",
+        "source_channel": input.source_channel,
+        "notes": input.notes,
+        "billing_notes": [],
+        "reserved_by": user.get("name"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.bookings.insert_one(booking_doc)
+
+    if input.advance_paid > 0:
+        await db.transactions.insert_one({
+            "transaction_id": f"TX-{secrets.token_hex(4).upper()}",
+            "booking_id": booking_id,
+            "amount": input.advance_paid,
+            "type": input.payment_method,
+            "category": "reservation_advance",
+            "description": f"Reservation advance - Room {input.room_number} for {input.check_in_date}",
+            "staff_id": user.get("_id"),
+            "staff_name": user.get("name"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+
+    settings = await db.settings.find_one({}, {"_id": 0}) or {}
+    hotel_rules = settings.get("hotel_rules", [])
+    wa_phone = input.whatsapp_number or input.guest_phone
+    rules_text = "\n".join([f"- {r}" for r in hotel_rules])
+    await db.whatsapp_logs.insert_one({
+        "phone": wa_phone,
+        "message_type": "reservation_confirmation",
+        "content": f"Booking Confirmed!\nNivant Lodge\nRoom: {input.room_number}\nDate: {input.check_in_date}\nGuest: {input.guest_name}\nRate: Rs.{input.rate_per_day}/day\n\nRules:\n{rules_text}\n\nIMPORTANT: Do NOT arrive before 12:00 PM.",
+        "status": "mocked_sent",
+        "booking_id": booking_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+    booking_doc.pop("_id", None)
+    return booking_doc
+
+@api_router.get("/bookings/reservations")
+async def get_reservations(request: Request, date: Optional[str] = None):
+    await get_current_user(request)
+    query = {"status": "reserved"}
+    if date:
+        query["check_in_date"] = date
+    reservations = await db.bookings.find(query, {"_id": 0}).sort("check_in_date", 1).to_list(200)
+    return reservations
+
+@api_router.post("/bookings/reserve/{booking_id}/checkin")
+async def checkin_reservation(booking_id: str, request: Request):
+    user = await get_current_user(request)
+    booking = await db.bookings.find_one({"booking_id": booking_id})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    if booking["status"] != "reserved":
+        raise HTTPException(status_code=400, detail="Not a reserved booking")
+    room = await db.rooms.find_one({"room_number": booking["room_number"]}, {"_id": 0})
+    if room and room["status"] == "occupied":
+        raise HTTPException(status_code=400, detail="Room is currently occupied")
+
+    check_in_time = datetime.now(timezone.utc)
+    await db.bookings.update_one(
+        {"booking_id": booking_id},
+        {"$set": {
+            "status": "active",
+            "check_in": check_in_time.isoformat(),
+            "checked_in_by": user.get("name")
+        }}
+    )
+    await db.rooms.update_one(
+        {"room_number": booking["room_number"]},
+        {"$set": {
+            "status": "occupied",
+            "current_booking_id": booking_id,
+            "status_changed_at": check_in_time.isoformat(),
+            "status_changed_by": user.get("name")
+        }}
+    )
+
+    settings = await db.settings.find_one({}, {"_id": 0}) or {}
+    wifi_name = settings.get("wifi_name", "NivantLodge")
+    wifi_pass = settings.get("wifi_password", "nivant1234")
+    wa_phone = booking.get("whatsapp_number") or booking.get("guest_phone")
+    await db.whatsapp_logs.insert_one({
+        "phone": wa_phone,
+        "message_type": "welcome",
+        "content": f"Welcome to Nivant Lodge, {booking['guest_name']}! Room {booking['room_number']} is ready.\nWi-Fi: {wifi_name} / {wifi_pass}",
+        "status": "mocked_sent",
+        "booking_id": booking_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+    return {"message": "Checked in", "booking_id": booking_id, "room_number": booking["room_number"]}
+
+@api_router.post("/bookings/reserve/{booking_id}/cancel")
+async def cancel_reservation(booking_id: str, request: Request):
+    user = await get_current_user(request)
+    booking = await db.bookings.find_one({"booking_id": booking_id})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    if booking["status"] != "reserved":
+        raise HTTPException(status_code=400, detail="Not a reserved booking")
+    await db.bookings.update_one(
+        {"booking_id": booking_id},
+        {"$set": {
+            "status": "cancelled",
+            "cancelled_by": user.get("name"),
+            "cancelled_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    return {"message": "Reservation cancelled", "booking_id": booking_id}
+
+@api_router.get("/bookings/calendar")
+async def get_booking_calendar(request: Request, month: Optional[str] = None):
+    await get_current_user(request)
+    if not month:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+    reservations = await db.bookings.find(
+        {"check_in_date": {"$regex": f"^{month}"}, "status": "reserved"},
+        {"_id": 0}
+    ).to_list(500)
+    active = await db.bookings.find(
+        {"check_in": {"$regex": f"^{month}"}, "status": "active"},
+        {"_id": 0}
+    ).to_list(500)
+    days = {}
+    for r in reservations:
+        date = r.get("check_in_date", "")
+        if date not in days:
+            days[date] = {"reservations": [], "active": []}
+        days[date]["reservations"].append({
+            "booking_id": r["booking_id"], "room_number": r["room_number"],
+            "guest_name": r["guest_name"], "rate": r["rate_per_day"],
+            "advance": r.get("advance_paid", 0), "source": r.get("source_channel", "walk-in")
+        })
+    for a in active:
+        date = a.get("check_in", "")[:10]
+        if date not in days:
+            days[date] = {"reservations": [], "active": []}
+        days[date]["active"].append({
+            "booking_id": a["booking_id"], "room_number": a["room_number"],
+            "guest_name": a["guest_name"]
+        })
+    return {"month": month, "days": days}
 
 # ---------- FRESH SERVICE (30 min, ₹200) ----------
 @api_router.post("/bookings/fresh")
