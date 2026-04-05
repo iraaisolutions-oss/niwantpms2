@@ -291,13 +291,10 @@ def calculate_billing(check_in_dt, check_out_dt, rate_per_day, num_guests, extra
     remaining_hours = total_hours - (total_days * 24)
     billing_notes = []
 
-    # Early check-in logic: if < 4 hours before standard time, full day
-    # Late check-out: 5-hour grace period
-    if remaining_hours > 5:
+    # Nivant Lodge: Overstay beyond 24 hours = full next day charge (no grace)
+    if remaining_hours > 0:
         total_days += 1
-        billing_notes.append("Late checkout: exceeded 5-hour grace period, +1 day charged")
-    elif remaining_hours > 0:
-        billing_notes.append(f"Within 5-hour grace period ({remaining_hours:.1f} hrs)")
+        billing_notes.append(f"Overstay: {remaining_hours:.1f} hrs beyond {total_days - 1} day(s), full day charged")
 
     room_charge = total_days * rate_per_day
     extra_charge = max(0, num_guests - 1) * extra_guest_charge * total_days

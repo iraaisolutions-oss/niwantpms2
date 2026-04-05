@@ -1,69 +1,77 @@
-# Digital Register - Hotel Management System (HMS)
+# Nivant Lodge - Hotel Management System
 
 ## Original Problem Statement
-Build a "Digital Register" Hotel Management System. Marathi-first, mobile-optimized PWA for Indian budget hotels. Core philosophy: "Big Buttons, Zero Typing", Traffic Light Logic for room dashboard, simulated Aadhar OCR, automated billing, Digital Galla, WhatsApp engine (mocked), Form C Export, and offline-first capabilities.
+Build a Marathi-first, mobile-optimized PWA Hotel Management System for Nivant Lodge, an Indian budget hotel with 22 rooms across 4 floors.
 
 ## Tech Stack
 - **Frontend**: React, Tailwind CSS, Shadcn UI, Phosphor Icons, PWA
 - **Backend**: FastAPI, Motor (Async MongoDB), JWT Auth
 - **Database**: MongoDB
 
-## User Personas
-- **Owner (मालक)**: Full access - analytics, room management, channel manager, remote cashbox, settings
-- **Staff (कर्मचारी)**: Operational access - dashboard, check-in/out, galla, expenses, guest requests
+## Room Inventory
+| Type | Rooms | Rate |
+|------|-------|------|
+| Standard | 101, 102, 201, 202, 203, 301, 302, 303 | ₹600/day |
+| Non-AC Deluxe | 103, 105, 106, 107 | ₹1000/day |
+| Non-AC Deluxe (Special) | 104 | ₹500/day |
+| AC Deluxe | 204, 205, 206, 304, 305, 306, 404, 405, 406 | ₹1200/day |
 
-## Core Requirements
+## Completed Features
+
+### Phase 1 (Core)
 - [x] JWT Auth with role-based access (Owner/Staff)
-- [x] 22-room interactive dashboard with Traffic Light Logic (Green/Red/Yellow)
-- [x] Check-in/Check-out flows with billing rules (Early check-in, Late check-out, Extra guest charges)
+- [x] 22-room interactive dashboard with Traffic Light Logic
+- [x] Check-in/Check-out with Nivant Lodge billing rules
 - [x] Digital Galla (Cashbox) with expense tracking
 - [x] Mocked WhatsApp messaging engine
 - [x] Form C Export (CSV)
 - [x] Marathi-English language toggle
 - [x] PWA Manifest & IndexedDB setup
+
+### Phase 2 (Operations)
 - [x] Remote Cashbox for owners
 - [x] Shift Handover
 - [x] QR Digital Bell for guest requests
 
-## Phase 3 Features (Completed Feb 2026)
-- [x] **Auto-send WhatsApp on Check-in**: Welcome message + WiFi details + Hotel Rules (3 messages auto-sent)
-- [x] **Owner Room Management**: Add/Edit/Delete rooms (room number, floor, type, rate) - Owner only
-- [x] **Voice Expense (Web Speech API)**: Mic button records voice → speech-to-text → parse expense. Fallback to text input.
-- [x] **Full Channel Manager**: 5-tab interface (Overview, Channels, Rates, Bookings, Sync) with OTA integration simulation
-- [x] **OCR Scan Fix**: Consistent demo data on scan instead of random garbage
-- [x] **Booking Source Tracking**: Channel selector on check-in (Walk-in + OTAs)
-- [x] **Hotel Settings API**: WiFi name/password, hotel rules, configurable by owner
+### Phase 3 (Channel Manager)
+- [x] Full Channel Manager (5 tabs: Overview, Channels, Rates, Bookings, Sync)
+- [x] 5 OTA channels seeded (OYO, MakeMyTrip, Booking.com, Agoda, Goibibo)
+- [x] Booking Source tracking on check-in
+- [x] Owner Room Management (CRUD)
+- [x] Hotel Settings API (WiFi, rules, configurable by owner)
 
-## Key API Endpoints
-- Auth: POST /api/auth/login, /api/auth/register, GET /api/auth/me
-- Rooms: GET /api/rooms, PUT /api/rooms/{room_number}, GET /api/rooms/{room_number}
-- Room Management: POST/PUT/DELETE /api/rooms/manage/{room_number}
-- Bookings: POST /api/bookings/checkin, /api/bookings/checkout, GET /api/bookings
-- Galla: GET /api/galla/summary, GET /api/galla/remote
-- Expenses: POST /api/expenses, POST /api/expenses/voice
-- Channels: GET/POST /api/channels, PUT/DELETE /api/channels/{id}
-- Channel Rates: GET/POST /api/channels/rates
-- Channel Bookings: GET /api/channels/bookings
-- Channel Sync: POST /api/channels/sync
-- Channel Analytics: GET /api/channels/analytics
-- Settings: GET/PUT /api/settings
-- WhatsApp: POST /api/whatsapp/send, GET /api/whatsapp/logs
-- Form C: GET /api/formc/export
-- QR Bell: POST /api/qr/request, GET /api/qr/requests
+### Phase 4 (Nivant Lodge Overhaul) - Feb 2026
+- [x] Room inventory restructured to Nivant Lodge layout (22 rooms, 3 types, 4 floors)
+- [x] Billing: 12 PM check-in/out, overstay = full day charge (NO grace period)
+- [x] Fresh Service (30 min, ₹200) with quick booking from dashboard
+- [x] Face photo capture at check-in (phone camera, stored as base64)
+- [x] Primary Phone + WhatsApp Number fields with "Copy from Primary" button
+- [x] Aadhaar stored unmasked (full number for Form C compliance)
+- [x] Voice button removed from Galla/Expenses
+- [x] Emergent branding removed (CSS hide)
+- [x] Hotel renamed to "Nivant Lodge" throughout
+- [x] Auto WhatsApp: Welcome + WiFi + Rules + Early arrival warning (₹500)
+- [x] Booking History endpoint with pagination
 
-## Database Collections
-- users, rooms, bookings, guests, transactions, expenses, whatsapp_logs, settings, channels, channel_rates, form_c_exports, shift_handovers, qr_requests, audit_logs
-
-## Seeded Data
-- 22 rooms (101-122), 2 users (owner + staff), 5 OTA channels (OYO 25%, MakeMyTrip 20%, Booking.com 15%, Agoda 18%, Goibibo 20%), Hotel settings with WiFi and rules
+## Policies
+- Check-in/out: 12:00 PM
+- Overstay: >24h = full day charge, no grace
+- Early arrival: Before 12 PM = ₹500 temporary room
+- Fresh Service: 30 min, ₹200
 
 ## Mocked Integrations
-- WhatsApp Business API (logs to DB with mocked_sent status)
-- Aadhar OCR (simulated - fills fixed demo data)
-- OTA Channel Sync (simulated bookings from random channels)
+- WhatsApp Business API (logged to DB)
+- Aadhar OCR (simulated demo data)
+- OTA Channel Sync (simulated bookings)
 
 ## Backlog / Future Tasks
-- P1: Real Meta WhatsApp API integration (requires user credentials)
+- P1: AC room allocation logic (≤2 guests → 205/305/405, >2 → 204/206/304/306/404/406)
+- P1: Room conversion (AC → Non-AC toggle)
+- P1: Future bookings with date selection + OTA sync
+- P1: Communication status tracking ("Delivered"/"Failed") + dashboard flag
+- P1: Manual resend WhatsApp button if undelivered
+- P2: Real Meta WhatsApp API integration
 - P2: Real Aadhar OCR integration
-- P2: Occupancy Calendar Heatmap
-- P3: Server.py refactoring into modular routers
+- P2: Hide room numbers from booking platform display
+- P2: Check-in/Check-out history page (permanent ledger UI)
+- P3: Backend refactoring (server.py → modular routers)
