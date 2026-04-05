@@ -157,6 +157,9 @@ class FreshServiceInput(BaseModel):
     guest_phone: str
     payment_method: str = "cash"
 
+class AadharOCRInput(BaseModel):
+    image_base64: str  # base64 encoded image from camera
+
 class HotelSettingsInput(BaseModel):
     hotel_name: Optional[str] = None
     wifi_name: Optional[str] = None
@@ -1412,6 +1415,64 @@ async def get_invoice(booking_id: str, request: Request):
         "status": booking["status"]
     }
     return invoice
+
+# ---------- AADHAR OCR (AI Vision) ----------
+@api_router.post("/ocr/aadhar")
+async def ocr_aadhar(input: AadharOCRInput, request: Request):
+    """Use AI vision to extract details from Aadhar card image"""
+    await get_current_user(request)
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        import uuid
+
+        llm_key = os.environ.get("EMERGENT_LLM_KEY")
+        if not llm_key:
+            raise HTTPException(status_code=500, detail="LLM key not configured")
+
+        # Clean base64 - remove data URL prefix if present
+        img_data = input.image_base64
+        if "," in img_data:
+            img_data = img_data.split(",", 1)[1]
+
+        chat = LlmChat(
+            api_key=llm_key,
+            session_id=f"ocr-{uuid.uuid4().hex[:8]}",
+            system_message="You are an OCR assistant. Extract information from Indian ID cards (Aadhar, Driving License, etc). Return ONLY a JSON object with the fields: name, aadhar_number, address, date_of_birth, gender. If a field cannot be read, use empty string. Do not include any extra text, markdown, or explanation."
+        ).with_model("openai", "gpt-4o")
+
+        image_content = ImageContent(image_base64=img_data)
+        user_message = UserMessage(
+            text="Extract the following from this Indian ID card image: full name, Aadhar number (12 digits), complete address, date of birth, and gender. Return as JSON only.",
+            file_contents=[image_content]
+        )
+
+        response = await chat.send_message(user_message)
+
+        # Parse JSON from response
+        import re
+        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            extracted = json.loads(json_match.group())
+        else:
+            extracted = {"name": "", "aadhar_number": "", "address": "", "date_of_birth": "", "gender": ""}
+
+        return {
+            "success": True,
+            "data": {
+                "name": extracted.get("name", ""),
+                "aadhar_number": extracted.get("aadhar_number", ""),
+                "address": extracted.get("address", ""),
+                "date_of_birth": extracted.get("date_of_birth", ""),
+                "gender": extracted.get("gender", "")
+            }
+        }
+    except ImportError:
+        raise HTTPException(status_code=500, detail="OCR library not installed")
+    except json.JSONDecodeError:
+        return {"success": False, "data": {"name": "", "aadhar_number": "", "address": "", "date_of_birth": "", "gender": ""}, "error": "Could not parse card details"}
+    except Exception as e:
+        logging.error(f"OCR error: {str(e)}")
+        return {"success": False, "data": {"name": "", "aadhar_number": "", "address": "", "date_of_birth": "", "gender": ""}, "error": str(e)}
 
 # ---------- GUEST SEARCH (for returning customers) ----------
 @api_router.get("/guests/search")

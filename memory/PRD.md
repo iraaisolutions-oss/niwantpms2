@@ -73,8 +73,10 @@ Build a Marathi-first, mobile-optimized PWA Hotel Management System for Nivant L
 
 ## Mocked Integrations
 - WhatsApp Business API (logged to DB)
-- Aadhar OCR (simulated demo data)
 - OTA Channel Sync (simulated bookings)
+
+## Real Integrations
+- Aadhar OCR: AI-powered using GPT-4o vision (reads name, number, address from card image)
 
 ## Backlog / Future Tasks
 - P1: AC room allocation logic (≤2 guests → 205/305/405, >2 → 204/206/304/306/404/406)

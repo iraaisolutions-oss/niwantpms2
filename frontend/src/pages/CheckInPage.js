@@ -67,7 +67,7 @@ export default function CheckInPage() {
       if (videoRef.current) { videoRef.current.srcObject = stream; }
     } catch (err) {
       console.error('Camera access denied', err);
-      if (mode === 'aadhar') runOCRSimulation();
+      alert(lang === 'mr' ? 'कॅमेरा उपलब्ध नाही - कृपया माहिती व्यक्तिचलितपणे भरा' : 'Camera not available - please enter details manually');
       stopCamera();
     }
   };
@@ -80,14 +80,22 @@ export default function CheckInPage() {
 
   const capturePhoto = () => {
     if (cameraMode === 'aadhar') {
-      setOcrProcessing(true);
-      stopCamera();
-      setTimeout(() => {
-        runOCRSimulation();
+      // Capture image and send to AI OCR
+      if (videoRef.current && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 640, 480);
+        const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+        stopCamera();
+        runAIocr(imageBase64);
+      } else {
+        stopCamera();
         setOcrProcessing(false);
-      }, 1500);
+      }
     } else if (cameraMode === 'face') {
-      // Capture face photo as base64
       if (videoRef.current && canvasRef.current) {
         const canvas = canvasRef.current;
         const video = videoRef.current;
@@ -103,15 +111,27 @@ export default function CheckInPage() {
     }
   };
 
-  const runOCRSimulation = () => {
-    setForm(prev => ({
-      ...prev,
-      guest_name: 'Rajesh Kumar Patil',
-      guest_phone: '9876543210',
-      aadhar_number: '7412 8563 9021',
-      address: 'Flat 12, Sai Residency, Pune, Maharashtra 411001'
-    }));
-    setAadharCaptured(true);
+  const runAIocr = async (imageBase64) => {
+    setOcrProcessing(true);
+    try {
+      const { data } = await api.post('/ocr/aadhar', { image_base64: imageBase64 });
+      if (data.success && data.data) {
+        setForm(prev => ({
+          ...prev,
+          guest_name: data.data.name || prev.guest_name,
+          aadhar_number: data.data.aadhar_number || prev.aadhar_number,
+          address: data.data.address || prev.address,
+        }));
+        setAadharCaptured(true);
+      } else {
+        alert(lang === 'mr' ? 'OCR अयशस्वी - कृपया व्यक्तिचलितपणे भरा' : 'OCR failed - please enter manually');
+      }
+    } catch (err) {
+      console.error('OCR error:', err);
+      alert(lang === 'mr' ? 'OCR त्रुटी - कृपया व्यक्तिचलितपणे भरा' : 'OCR error - please enter manually');
+    } finally {
+      setOcrProcessing(false);
+    }
   };
 
   const copyPhoneToWhatsApp = () => {
