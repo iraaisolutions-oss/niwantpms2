@@ -52,7 +52,9 @@ export default function DashboardPage() {
 
   const handleFreshService = async (roomNumber) => {
     try {
-      await api.post('/bookings/fresh', { room_number: roomNumber, num_people: freshForm.num_people, payment_method: freshForm.payment_method, rate_per_person: parseFloat(freshForm.rate_per_person) || 200 });
+      const { data } = await api.post('/bookings/fresh', { room_number: roomNumber, num_people: freshForm.num_people, payment_method: freshForm.payment_method, rate_per_person: parseFloat(freshForm.rate_per_person) || 200 });
+      const total = (parseFloat(freshForm.rate_per_person) || 200) * freshForm.num_people;
+      alert(lang === 'mr' ? `₹${total} गल्ल्यात जमा झाले (${freshForm.payment_method === 'cash' ? 'रोख' : 'UPI'})` : `₹${total} added to Cashbox (${freshForm.payment_method.toUpperCase()})`);
       setShowFresh(null);
       setFreshForm({ num_people: 1, payment_method: 'cash', rate_per_person: 200 });
       fetchRooms();
@@ -290,9 +292,13 @@ export default function DashboardPage() {
                     className={`h-12 rounded-xl border-2 font-bold active:scale-95 transition-transform ${freshForm.payment_method === 'upi' ? 'bg-[#2563EB] text-white border-[#1D4ED8]' : 'bg-white text-zinc-600 border-zinc-200'}`} data-testid="fresh-pay-upi">UPI</button>
                 </div>
               </div>
+              <div className="bg-zinc-100 rounded-xl p-3 text-center">
+                <span className="text-sm font-bold text-zinc-500">{lang === 'mr' ? 'एकूण' : 'Total'}: </span>
+                <span className="text-2xl font-black text-zinc-900">₹{(parseFloat(freshForm.rate_per_person) || 200) * freshForm.num_people}</span>
+              </div>
               <button onClick={() => handleFreshService(showFresh)}
-                className="w-full h-14 rounded-xl bg-[#2563EB] text-white font-bold text-lg active:scale-95 transition-transform" data-testid="fresh-submit-btn">
-                {lang === 'mr' ? 'बुक करा' : 'Submit'} · ₹{(parseFloat(freshForm.rate_per_person) || 200) * freshForm.num_people}
+                className="w-full h-16 rounded-xl bg-[#22C55E] text-white font-black text-xl active:scale-95 transition-transform uppercase tracking-wider" data-testid="fresh-submit-btn">
+                {lang === 'mr' ? 'जमा करा — गल्ल्यात जोडा' : 'SUBMIT — Add to Cashbox'}
               </button>
             </div>
           </div>
