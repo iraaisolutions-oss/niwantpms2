@@ -1,0 +1,97 @@
+{
+  "summary": "Completed testing of 11 Nivant Lodge app changes. Backend: 15/15 tests passed (100%). Frontend: All 11 features verified via Playwright. Fresh service modal, check-in validation, additional guests, signature pad, same-as-mobile checkbox, send bill WhatsApp, room types, and Form C date filter all working correctly.",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "hotel_rules in settings",
+        "issue": "The hotel_rules in settings already contain early arrival warning text ('Do NOT arrive before 12:00 PM', 'Early arrivals will be charged Rs.500'). This causes walk-in guests to see early arrival warning even though the code correctly adds ADDITIONAL warning only for channel bookings. The base rules should be updated to remove early arrival text since it's supposed to be conditionally added.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "passed_tests": [
+    "Backend: POST /api/bookings/fresh - Creates fresh service with num_people and payment_method (NO guest_name/guest_phone required)",
+    "Backend: POST /api/bookings/fresh - Returns FR- prefix booking_id, booking_type='fresh', total_amount=200",
+    "Backend: POST /api/bookings/checkin - Empty name returns 400 with 'name required' message",
+    "Backend: POST /api/bookings/checkin - Short name (<2 chars) returns 400",
+    "Backend: POST /api/bookings/checkin - Phone not 10 digits returns 400 with '10 digits' message",
+    "Backend: POST /api/bookings/checkin - Aadhar not 12 digits returns 400 with '12 digits' message",
+    "Backend: POST /api/bookings/checkin - additional_guests array stored in guest doc",
+    "Backend: POST /api/bookings/checkin - aadhar_photo and signature base64 stored in guest doc",
+    "Backend: POST /api/bookings/checkin - Walk-in (source_channel='walk-in') does NOT get ADDITIONAL early arrival warning",
+    "Backend: POST /api/bookings/checkin - Channel booking (source_channel='CH-OYO') gets early arrival warning",
+    "Backend: POST /api/bookings/{id}/send-bill - Sends bill via WhatsApp (MOCKED), returns phone and content",
+    "Backend: GET /api/rooms - Room types are 'standard', 'deluxe', 'ac_deluxe' (no 'non_ac_deluxe')",
+    "Backend: GET /api/formc/export - Accepts from_date and to_date query params for filtering",
+    "Backend: GET /api/formc/export - Returns records, csv_data, total_guests",
+    "Backend: Valid check-in with all fields succeeds",
+    "Frontend: Dashboard shows Fresh Service buttons with room numbers",
+    "Frontend: Fresh modal shows 'Number of People' selector (1-5) + Cash/UPI buttons (NO guest_name/phone fields)",
+    "Frontend: Check-in page has 'Same as Mobile' checkbox for WhatsApp number",
+    "Frontend: Check-in page has signature pad with Clear and Save Signature buttons",
+    "Frontend: Check-in page has 'Add Guest' button for additional guests",
+    "Frontend: Check-in page shows red validation errors for empty/invalid fields",
+    "Frontend: Room Detail page has 'Bill WhatsApp' button (बिल WhatsApp)",
+    "Frontend: Room Management page shows Standard/Deluxe/AC Deluxe room types",
+    "Frontend: Form C page has date range filter with From/To date inputs and Filter button"
+  ],
+  
+  "test_report_links": [
+    "/app/backend/tests/test_11_features.py",
+    "/app/test_reports/pytest/pytest_11_features.xml"
+  ],
+  
+  "action_items": [
+    "OPTIONAL: Update hotel_rules in settings to remove early arrival warning text since it's conditionally added by code for channel bookings only"
+  ],
+  
+  "critical_code_review_comments": [],
+  
+  "updated_files": [
+    "/app/backend/tests/test_11_features.py"
+  ],
+  
+  "success_rate": {
+    "backend": "100% (15/15 tests passed)",
+    "frontend": "100% (All 11 features verified)"
+  },
+  
+  "mocked_apis": {
+    "WhatsApp Business API": "Messages logged to DB with 'mocked_sent' status - send-bill, welcome, wifi, rules messages all mocked"
+  },
+  
+  "test_credentials": {
+    "owner": "admin@hotel.com / admin123",
+    "staff": "staff@hotel.com / staff123"
+  },
+  
+  "seed_data_creation": "Test bookings created with TEST_ prefix during backend tests, cleaned up after each test",
+  
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  
+  "context_for_next_testing_agent": "All 11 features tested and working: 1) Fresh service accepts num_people + payment_method only (no guest name/phone), 2) Additional guests stored in guest doc, 3) Aadhar photo + signature stored as base64, 4) Early arrival warning conditional on source_channel (code works but hotel_rules in settings has redundant text), 5) Check-in validation for name/phone/aadhar, 6) Send bill WhatsApp endpoint works, 7) Room types are standard/deluxe/ac_deluxe, 8) Form C date filter works, 9) Same as Mobile checkbox on check-in, 10) Signature pad on check-in, 11) Fresh modal has people selector + payment buttons.",
+  
+  "features_verified": {
+    "fresh_service_no_guest_info": "✓ POST /api/bookings/fresh with num_people + payment_method only",
+    "additional_guests": "✓ additional_guests array stored in guest doc",
+    "aadhar_photo_signature": "✓ aadhar_photo and signature base64 stored in guest doc",
+    "early_arrival_conditional": "✓ Code adds warning only for non-walk-in bookings (hotel_rules has redundant text)",
+    "checkin_validation": "✓ name (min 2 chars), phone (10 digits), aadhar (12 digits) validated",
+    "send_bill_whatsapp": "✓ POST /api/bookings/{id}/send-bill sends bill (MOCKED)",
+    "room_types": "✓ standard/deluxe/ac_deluxe (no non_ac_deluxe)",
+    "formc_date_filter": "✓ from_date and to_date query params work",
+    "same_as_mobile_checkbox": "✓ Frontend checkbox copies phone to WhatsApp field",
+    "signature_pad": "✓ Canvas signature pad with Clear/Save buttons",
+    "fresh_modal_ui": "✓ Number selector (1-5) + Cash/UPI buttons, no guest name/phone fields"
+  }
+}

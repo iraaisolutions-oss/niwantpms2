@@ -51,11 +51,10 @@ export default function DashboardPage() {
   };
 
   const handleFreshService = async (roomNumber) => {
-    if (!freshForm.guest_name || !freshForm.guest_phone) return;
     try {
-      await api.post('/bookings/fresh', { room_number: roomNumber, ...freshForm });
+      await api.post('/bookings/fresh', { room_number: roomNumber, num_people: freshForm.num_people, payment_method: freshForm.payment_method });
       setShowFresh(null);
-      setFreshForm({ guest_name: '', guest_phone: '' });
+      setFreshForm({ num_people: 1, payment_method: 'cash' });
       fetchRooms();
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed');
@@ -116,7 +115,7 @@ export default function DashboardPage() {
   const getRoomTypeLabel = (type) => {
     switch (type) {
       case 'ac_deluxe': return 'AC DLX';
-      case 'non_ac_deluxe': return 'DLX';
+      case 'deluxe': return 'DLX';
       default: return 'STD';
     }
   };
@@ -262,12 +261,26 @@ export default function DashboardPage() {
             <div className="bg-white w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()} data-testid="fresh-modal">
               <p className="font-bold text-lg">{lang === 'mr' ? 'फ्रेश सर्व्हिस' : 'Fresh Service'} — {lang === 'mr' ? 'रूम' : 'Room'} {showFresh}</p>
               <p className="text-sm text-zinc-500">{lang === 'mr' ? '30 मिनिटे · ₹200' : '30 minutes · ₹200'}</p>
-              <input type="text" value={freshForm.guest_name} onChange={e => setFreshForm(p => ({...p, guest_name: e.target.value}))}
-                placeholder={lang === 'mr' ? 'पाहुण्याचे नाव' : 'Guest Name'} className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="fresh-guest-name" />
-              <input type="tel" value={freshForm.guest_phone} onChange={e => setFreshForm(p => ({...p, guest_phone: e.target.value}))}
-                placeholder={lang === 'mr' ? 'फोन' : 'Phone'} className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="fresh-guest-phone" />
-              <button onClick={() => handleFreshService(showFresh)} disabled={!freshForm.guest_name || !freshForm.guest_phone}
-                className="w-full h-14 rounded-xl bg-[#2563EB] text-white font-bold text-lg active:scale-95 transition-transform disabled:opacity-50" data-testid="fresh-submit-btn">
+              <div>
+                <label className="text-xs font-bold text-zinc-400 mb-2 block">{lang === 'mr' ? 'व्यक्तींची संख्या' : 'Number of People'}</label>
+                <div className="flex gap-2">
+                  {[1,2,3,4,5].map(n => (
+                    <button key={n} onClick={() => setFreshForm(p => ({...p, num_people: n}))}
+                      className={`w-14 h-14 rounded-xl border-2 font-bold text-xl active:scale-95 transition-transform ${freshForm.num_people === n ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-600 border-zinc-200'}`} data-testid={`fresh-people-${n}`}>{n}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-zinc-400 mb-2 block">{lang === 'mr' ? 'पेमेंट' : 'Payment'}</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setFreshForm(p => ({...p, payment_method: 'cash'}))}
+                    className={`h-12 rounded-xl border-2 font-bold active:scale-95 transition-transform ${freshForm.payment_method === 'cash' ? 'bg-[#22C55E] text-white border-[#16A34A]' : 'bg-white text-zinc-600 border-zinc-200'}`} data-testid="fresh-pay-cash">{lang === 'mr' ? 'रोख' : 'Cash'}</button>
+                  <button onClick={() => setFreshForm(p => ({...p, payment_method: 'upi'}))}
+                    className={`h-12 rounded-xl border-2 font-bold active:scale-95 transition-transform ${freshForm.payment_method === 'upi' ? 'bg-[#2563EB] text-white border-[#1D4ED8]' : 'bg-white text-zinc-600 border-zinc-200'}`} data-testid="fresh-pay-upi">UPI</button>
+                </div>
+              </div>
+              <button onClick={() => handleFreshService(showFresh)}
+                className="w-full h-14 rounded-xl bg-[#2563EB] text-white font-bold text-lg active:scale-95 transition-transform" data-testid="fresh-submit-btn">
                 {lang === 'mr' ? 'फ्रेश बुक करा · ₹200' : 'Book Fresh · ₹200'}
               </button>
             </div>

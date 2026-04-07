@@ -122,7 +122,7 @@ export default function RoomManagementPage() {
                   className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-bold focus:border-zinc-900 focus:outline-none bg-white" data-testid="add-room-type">
                   <option value="standard">{lang === 'mr' ? 'स्टँडर्ड' : 'Standard'}</option>
                   <option value="deluxe">{lang === 'mr' ? 'डिलक्स' : 'Deluxe'}</option>
-                  <option value="suite">{lang === 'mr' ? 'सुइट' : 'Suite'}</option>
+                  <option value="ac_deluxe">{lang === 'mr' ? 'AC डिलक्स' : 'AC Deluxe'}</option>
                 </select>
               </div>
               <div>
@@ -162,7 +162,7 @@ export default function RoomManagementPage() {
                         className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-bold focus:border-zinc-900 focus:outline-none bg-white" data-testid="edit-room-type">
                         <option value="standard">{lang === 'mr' ? 'स्टँडर्ड' : 'Standard'}</option>
                         <option value="deluxe">{lang === 'mr' ? 'डिलक्स' : 'Deluxe'}</option>
-                        <option value="suite">{lang === 'mr' ? 'सुइट' : 'Suite'}</option>
+                        <option value="ac_deluxe">{lang === 'mr' ? 'AC डिलक्स' : 'AC Deluxe'}</option>
                       </select>
                     </div>
                     <div>
@@ -191,7 +191,7 @@ export default function RoomManagementPage() {
                       {room.room_number}
                     </div>
                     <div>
-                      <p className="font-bold">{lang === 'mr' ? 'मजला' : 'Floor'} {room.floor} · {room.room_type === 'deluxe' ? (lang === 'mr' ? 'डिलक्स' : 'Deluxe') : room.room_type === 'suite' ? (lang === 'mr' ? 'सुइट' : 'Suite') : (lang === 'mr' ? 'स्टँडर्ड' : 'Standard')}</p>
+                      <p className="font-bold">{lang === 'mr' ? 'मजला' : 'Floor'} {room.floor} · {room.room_type === 'ac_deluxe' ? 'AC Deluxe' : room.room_type === 'deluxe' ? (lang === 'mr' ? 'डिलक्स' : 'Deluxe') : (lang === 'mr' ? 'स्टँडर्ड' : 'Standard')}</p>
                       <p className="text-sm text-zinc-500">₹{room.rate}/{lang === 'mr' ? 'दिवस' : 'day'} · {room.status}</p>
                     </div>
                   </div>

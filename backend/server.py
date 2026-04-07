@@ -108,6 +108,9 @@ class CheckInInput(BaseModel):
     id_type: str = "Aadhar"
     source_channel: str = "walk-in"
     face_photo: Optional[str] = None  # base64 encoded
+    aadhar_photo: Optional[str] = None  # base64 of aadhar card image
+    signature: Optional[str] = None  # base64 of drawn signature
+    additional_guests: Optional[List[dict]] = None  # [{name, phone}]
 
 class CheckOutInput(BaseModel):
     booking_id: str
@@ -153,8 +156,7 @@ class VoiceExpenseInput(BaseModel):
 
 class FreshServiceInput(BaseModel):
     room_number: int
-    guest_name: str
-    guest_phone: str
+    num_people: int = 1
     payment_method: str = "cash"
 
 class AadharOCRInput(BaseModel):
@@ -329,6 +331,19 @@ def calculate_billing(check_in_dt, check_out_dt, rate_per_day, num_guests, extra
 @api_router.post("/bookings/checkin")
 async def check_in(input: CheckInInput, request: Request):
     user = await get_current_user(request)
+
+    # Validation
+    import re
+    if not input.guest_name or len(input.guest_name.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Guest name is required (min 2 characters)")
+    phone_digits = re.sub(r'\D', '', input.guest_phone or '')
+    if len(phone_digits) != 10:
+        raise HTTPException(status_code=400, detail="Phone number must be 10 digits")
+    if input.aadhar_number:
+        aadhar_digits = re.sub(r'\D', '', input.aadhar_number)
+        if len(aadhar_digits) != 12:
+            raise HTTPException(status_code=400, detail="Aadhar number must be 12 digits")
+
     room = await db.rooms.find_one({"room_number": input.room_number}, {"_id": 0})
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -353,6 +368,9 @@ async def check_in(input: CheckInInput, request: Request):
         "whatsapp_number": input.whatsapp_number or input.guest_phone,
         "aadhar_number": input.aadhar_number,
         "face_photo": input.face_photo,
+        "aadhar_photo": input.aadhar_photo,
+        "signature": input.signature,
+        "additional_guests": input.additional_guests or [],
         "address": input.address,
         "nationality": input.nationality,
         "id_type": input.id_type,
@@ -432,10 +450,14 @@ async def check_in(input: CheckInInput, request: Request):
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
     rules_text = "\n".join([f"- {r}" for r in hotel_rules])
+    # Early arrival warning only for channel manager bookings
+    early_warning = ""
+    if input.source_channel != "walk-in":
+        early_warning = "\n\nIMPORTANT: Do NOT arrive before 12:00 PM. Early arrivals will be charged Rs.500 for a temporary regular room until 12:00 PM."
     await db.whatsapp_logs.insert_one({
         "phone": wa_phone,
         "message_type": "rules",
-        "content": f"Nivant Lodge Rules:\n{rules_text}\n\nIMPORTANT: Do NOT arrive before 12:00 PM. Early arrivals will be charged Rs.500 for a temporary regular room until 12:00 PM.",
+        "content": f"Nivant Lodge Rules:\n{rules_text}{early_warning}",
         "status": "mocked_sent",
         "booking_id": booking_id,
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -687,6 +709,13 @@ async def get_whatsapp_logs(request: Request):
 async def export_form_c(request: Request, from_date: Optional[str] = None, to_date: Optional[str] = None):
     await get_current_user(request)
     query = {"status": {"$in": ["active", "completed"]}}
+    if from_date or to_date:
+        date_filter = {}
+        if from_date:
+            date_filter["$gte"] = from_date
+        if to_date:
+            date_filter["$lte"] = to_date + "T23:59:59"
+        query["check_in"] = date_filter
     bookings = await db.bookings.find(query, {"_id": 0}).sort("check_in", -1).to_list(1000)
     guest_ids = [b.get("guest_id") for b in bookings if b.get("guest_id")]
     guests_map = {}
@@ -1686,10 +1715,10 @@ async def fresh_service(input: FreshServiceInput, request: Request):
     booking_doc = {
         "booking_id": booking_id,
         "room_number": input.room_number,
-        "guest_name": input.guest_name,
-        "guest_phone": input.guest_phone,
+        "guest_name": f"Fresh ({input.num_people}p)",
+        "guest_phone": "",
         "booking_type": "fresh",
-        "num_guests": 1,
+        "num_guests": input.num_people,
         "check_in": datetime.now(timezone.utc).isoformat(),
         "check_out": None,
         "rate_per_day": 200,
@@ -1728,6 +1757,51 @@ async def fresh_service(input: FreshServiceInput, request: Request):
     booking_doc.pop("_id", None)
     return booking_doc
 
+# ---------- SEND BILL VIA WHATSAPP ----------
+@api_router.post("/bookings/{booking_id}/send-bill")
+async def send_bill_whatsapp(booking_id: str, request: Request):
+    user = await get_current_user(request)
+    booking = await db.bookings.find_one({"booking_id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    billing = booking.get("billing_details") or booking.get("billing_preview")
+    total = booking.get("total_amount", 0)
+    if not total and billing:
+        total = billing.get("total_amount", 0)
+    paid = booking.get("total_paid", 0)
+    balance = booking.get("balance_due", max(0, total - paid))
+    wa_phone = booking.get("whatsapp_number") or booking.get("guest_phone")
+    if not wa_phone:
+        raise HTTPException(status_code=400, detail="No WhatsApp number available")
+
+    bill_msg = (
+        f"Nivant Lodge - Bill\n"
+        f"{'=' * 20}\n"
+        f"Guest: {booking.get('guest_name')}\n"
+        f"Room: {booking.get('room_number')}\n"
+        f"Rate: Rs.{booking.get('rate_per_day')}/day\n"
+    )
+    if billing:
+        bill_msg += f"Days: {billing.get('total_days', 1)}\n"
+        bill_msg += f"Room Charge: Rs.{billing.get('room_charge', total)}\n"
+    bill_msg += (
+        f"Total: Rs.{total}\n"
+        f"Paid: Rs.{paid}\n"
+        f"Balance: Rs.{balance}\n"
+        f"{'=' * 20}\n"
+        f"Thank you for staying at Nivant Lodge!"
+    )
+    await db.whatsapp_logs.insert_one({
+        "phone": wa_phone,
+        "message_type": "bill",
+        "content": bill_msg,
+        "status": "mocked_sent",
+        "booking_id": booking_id,
+        "sent_by": user.get("name"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    return {"message": "Bill sent via WhatsApp", "phone": wa_phone, "content": bill_msg}
+
 # ---------- BOOKING HISTORY (permanent ledger) ----------
 @api_router.get("/bookings/history")
 async def get_booking_history(request: Request, status: Optional[str] = None, page: int = 1, limit: int = 50):
@@ -1754,11 +1828,11 @@ async def seed_rooms():
         {"room_number": 302, "floor": 3, "room_type": "standard", "rate": 600.0},
         {"room_number": 303, "floor": 3, "room_type": "standard", "rate": 600.0},
         # Non-AC Deluxe (₹1000), room 104 special (₹500)
-        {"room_number": 103, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
-        {"room_number": 104, "floor": 1, "room_type": "non_ac_deluxe", "rate": 500.0},
-        {"room_number": 105, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
-        {"room_number": 106, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
-        {"room_number": 107, "floor": 1, "room_type": "non_ac_deluxe", "rate": 1000.0},
+        {"room_number": 103, "floor": 1, "room_type": "deluxe", "rate": 1000.0},
+        {"room_number": 104, "floor": 1, "room_type": "deluxe", "rate": 500.0},
+        {"room_number": 105, "floor": 1, "room_type": "deluxe", "rate": 1000.0},
+        {"room_number": 106, "floor": 1, "room_type": "deluxe", "rate": 1000.0},
+        {"room_number": 107, "floor": 1, "room_type": "deluxe", "rate": 1000.0},
         # AC Deluxe (₹1200)
         {"room_number": 204, "floor": 2, "room_type": "ac_deluxe", "rate": 1200.0},
         {"room_number": 205, "floor": 2, "room_type": "ac_deluxe", "rate": 1200.0},
@@ -1866,6 +1940,8 @@ async def startup():
     await seed_rooms()
     await seed_channels()
     await seed_hotel_settings()
+    # Migrate room types: non_ac_deluxe → deluxe
+    await db.rooms.update_many({"room_type": "non_ac_deluxe"}, {"$set": {"room_type": "deluxe"}})
 
 app.include_router(api_router)
 
