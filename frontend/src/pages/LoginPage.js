@@ -59,9 +59,7 @@ export default function LoginPage() {
 
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Buildings size={40} weight="bold" className="text-white" />
-          </div>
+          <img src="/nivant-logo.png" alt="Nivant Lodge" className="h-24 w-auto mx-auto mb-4" />
           <h1 className="font-heading text-4xl md:text-5xl font-black tracking-tight text-zinc-900">
             {t('digital_register')}
           </h1>

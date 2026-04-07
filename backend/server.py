@@ -157,6 +157,7 @@ class VoiceExpenseInput(BaseModel):
 class FreshServiceInput(BaseModel):
     room_number: int
     num_people: int = 1
+    rate_per_person: float = 200
     payment_method: str = "cash"
 
 class AadharOCRInput(BaseModel):
@@ -343,6 +344,12 @@ async def check_in(input: CheckInInput, request: Request):
         aadhar_digits = re.sub(r'\D', '', input.aadhar_number)
         if len(aadhar_digits) != 12:
             raise HTTPException(status_code=400, detail="Aadhar number must be 12 digits")
+    if not input.face_photo:
+        raise HTTPException(status_code=400, detail="Face photo is required")
+    if not input.aadhar_photo:
+        raise HTTPException(status_code=400, detail="Aadhar card photo is required")
+    if not input.signature:
+        raise HTTPException(status_code=400, detail="Signature photo is required")
 
     room = await db.rooms.find_one({"room_number": input.room_number}, {"_id": 0})
     if not room:
@@ -1712,6 +1719,7 @@ async def fresh_service(input: FreshServiceInput, request: Request):
         raise HTTPException(status_code=400, detail="Room is occupied")
 
     booking_id = f"FR-{secrets.token_hex(4).upper()}"
+    total = input.rate_per_person * input.num_people
     booking_doc = {
         "booking_id": booking_id,
         "room_number": input.room_number,
@@ -1721,15 +1729,15 @@ async def fresh_service(input: FreshServiceInput, request: Request):
         "num_guests": input.num_people,
         "check_in": datetime.now(timezone.utc).isoformat(),
         "check_out": None,
-        "rate_per_day": 200,
-        "total_amount": 200,
-        "advance_paid": 200,
-        "total_paid": 200,
+        "rate_per_day": input.rate_per_person,
+        "total_amount": total,
+        "advance_paid": total,
+        "total_paid": total,
         "balance_due": 0,
         "payment_method": input.payment_method,
         "status": "active",
         "source_channel": "walk-in",
-        "billing_notes": ["Fresh Service - 30 minutes - ₹200"],
+        "billing_notes": [f"Fresh Service - {input.num_people}p x ₹{input.rate_per_person} = ₹{total}"],
         "checked_in_by": user.get("name"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1737,10 +1745,10 @@ async def fresh_service(input: FreshServiceInput, request: Request):
     await db.transactions.insert_one({
         "transaction_id": f"TX-{secrets.token_hex(4).upper()}",
         "booking_id": booking_id,
-        "amount": 200,
+        "amount": total,
         "type": input.payment_method,
         "category": "fresh_service",
-        "description": f"Fresh Service - Room {input.room_number}",
+        "description": f"Fresh Service - Room {input.room_number} ({input.num_people}p x ₹{input.rate_per_person})",
         "staff_id": user.get("_id"),
         "staff_name": user.get("name"),
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -1775,8 +1783,8 @@ async def send_bill_whatsapp(booking_id: str, request: Request):
         raise HTTPException(status_code=400, detail="No WhatsApp number available")
 
     bill_msg = (
-        f"Nivant Lodge - Bill\n"
-        f"{'=' * 20}\n"
+        f"[PDF] Nivant Lodge - Invoice\n"
+        f"{'=' * 30}\n"
         f"Guest: {booking.get('guest_name')}\n"
         f"Room: {booking.get('room_number')}\n"
         f"Rate: Rs.{booking.get('rate_per_day')}/day\n"
@@ -1785,11 +1793,13 @@ async def send_bill_whatsapp(booking_id: str, request: Request):
         bill_msg += f"Days: {billing.get('total_days', 1)}\n"
         bill_msg += f"Room Charge: Rs.{billing.get('room_charge', total)}\n"
     bill_msg += (
+        f"{'─' * 30}\n"
         f"Total: Rs.{total}\n"
         f"Paid: Rs.{paid}\n"
         f"Balance: Rs.{balance}\n"
-        f"{'=' * 20}\n"
-        f"Thank you for staying at Nivant Lodge!"
+        f"{'=' * 30}\n"
+        f"Thank you for staying at Nivant Lodge!\n"
+        f"[PDF document attached]"
     )
     await db.whatsapp_logs.insert_one({
         "phone": wa_phone,

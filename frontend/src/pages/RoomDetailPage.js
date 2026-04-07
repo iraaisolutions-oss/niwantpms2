@@ -14,6 +14,8 @@ export default function RoomDetailPage() {
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [pendingAmount, setPendingAmount] = useState('');
+  const [showPendingInput, setShowPendingInput] = useState(false);
   const [checkoutForm, setCheckoutForm] = useState({
     payment_method: 'cash',
     additional_charges: 0,
@@ -223,7 +225,7 @@ export default function RoomDetailPage() {
           </div>
         )}
 
-        {/* Quick Actions: Send Bill WhatsApp + Add Advance */}
+        {/* Quick Actions: Send Bill WhatsApp */}
         {booking && (
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -241,26 +243,33 @@ export default function RoomDetailPage() {
               <WhatsappLogo size={20} weight="bold" />
               {lang === 'mr' ? 'बिल WhatsApp' : 'Bill WhatsApp'}
             </button>
-            <button
-              onClick={async () => {
-                const amt = prompt(lang === 'mr' ? 'ॲडव्हान्स रक्कम:' : 'Advance amount:');
-                if (!amt || isNaN(amt)) return;
-                try {
-                  await api.post('/bookings/advance', {
-                    booking_id: booking.booking_id,
-                    amount: parseFloat(amt),
-                    payment_method: 'cash'
-                  });
-                  fetchRoomData();
-                } catch (err) { console.error(err); }
-              }}
-              className="h-14 rounded-xl border-2 border-[#22C55E] bg-[#DCFCE7] text-[#14532D] font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
-              data-testid="add-advance-btn"
-            >
+            <button onClick={() => setShowPendingInput(!showPendingInput)}
+              className="h-14 rounded-xl border-2 border-zinc-200 bg-white font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              data-testid="add-pending-btn">
               <CurrencyCircleDollar size={20} weight="bold" />
-              {t('add_advance')}
+              {lang === 'mr' ? 'बाकी रक्कम' : 'Add Pending'}
             </button>
           </div>
+        )}
+
+        {/* Add Pending Amount - Inline */}
+        {booking && showPendingInput && (
+            <div className="flex gap-2 items-center" data-testid="pending-amount-input">
+              <div className="flex-1 flex items-center gap-1 h-14 px-3 rounded-xl border-2 border-zinc-200 bg-white">
+                <span className="text-lg font-bold text-zinc-400">₹</span>
+                <input type="number" value={pendingAmount} onChange={e => setPendingAmount(e.target.value)}
+                  placeholder={lang === 'mr' ? 'रक्कम' : 'Amount'} className="flex-1 h-full font-bold text-lg focus:outline-none" data-testid="pending-amount-value" />
+              </div>
+              <button onClick={async () => {
+                if (!pendingAmount || isNaN(pendingAmount)) return;
+                try {
+                  await api.post('/bookings/advance', { booking_id: booking.booking_id, amount: parseFloat(pendingAmount), payment_method: 'cash' });
+                  setPendingAmount(''); setShowPendingInput(false); fetchRoomData();
+                } catch (err) { console.error(err); }
+              }} className="h-14 px-6 rounded-xl bg-[#22C55E] text-white font-bold active:scale-95" data-testid="submit-pending-btn">
+                {lang === 'mr' ? 'जोडा' : 'Add'}
+              </button>
+            </div>
         )}
 
         {/* Checkout Section */}

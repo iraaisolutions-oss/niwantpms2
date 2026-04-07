@@ -1,39 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../lib/api';
-import { Camera, UserPlus, ArrowLeft, IdentificationCard, CurrencyInr, CopySimple, Plus, X, PencilLine } from '@phosphor-icons/react';
-
-function SignaturePad({ onSave, lang }) {
-  const canvasRef = useRef(null);
-  const [drawing, setDrawing] = useState(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
-
-  const getPos = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const touch = e.touches ? e.touches[0] : e;
-    return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-  };
-
-  const startDraw = (e) => { e.preventDefault(); setDrawing(true); setHasDrawn(true); const ctx = canvasRef.current.getContext('2d'); ctx.beginPath(); const p = getPos(e); ctx.moveTo(p.x, p.y); };
-  const draw = (e) => { e.preventDefault(); if (!drawing) return; const ctx = canvasRef.current.getContext('2d'); const p = getPos(e); ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.lineTo(p.x, p.y); ctx.stroke(); };
-  const endDraw = () => { setDrawing(false); };
-  const clear = () => { const ctx = canvasRef.current.getContext('2d'); ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height); setHasDrawn(false); };
-  const save = () => { if (hasDrawn) onSave(canvasRef.current.toDataURL('image/png')); };
-
-  return (
-    <div className="space-y-2" data-testid="signature-pad">
-      <canvas ref={canvasRef} width={300} height={120}
-        className="w-full border-2 border-zinc-200 rounded-xl bg-white touch-none"
-        onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
-        onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw} />
-      <div className="flex gap-2">
-        <button onClick={clear} className="flex-1 h-10 rounded-lg border border-zinc-200 text-sm font-bold text-zinc-500 active:scale-95" data-testid="sig-clear">{lang === 'mr' ? 'पुसा' : 'Clear'}</button>
-        <button onClick={save} disabled={!hasDrawn} className="flex-1 h-10 rounded-lg bg-zinc-900 text-white text-sm font-bold active:scale-95 disabled:opacity-50" data-testid="sig-save">{lang === 'mr' ? 'सही सेव्ह' : 'Save Signature'}</button>
-      </div>
-    </div>
-  );
-}
+import { Camera, UserPlus, ArrowLeft, IdentificationCard, CurrencyInr, Plus, X, PencilLine } from '@phosphor-icons/react';
 
 export default function CheckInPage() {
   const { t, lang } = useLanguage();
@@ -42,14 +11,11 @@ export default function CheckInPage() {
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const [cameraMode, setCameraMode] = useState(null);
-  const [aadharCaptured, setAadharCaptured] = useState(false);
-  const [faceCaptured, setFaceCaptured] = useState(false);
+  const [cameraMode, setCameraMode] = useState(null); // 'aadhar' | 'face' | 'signature'
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const [channels, setChannels] = useState([]);
   const [errors, setErrors] = useState({});
   const [sameAsMobile, setSameAsMobile] = useState(false);
-  const [signatureSaved, setSignatureSaved] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
@@ -63,7 +29,7 @@ export default function CheckInPage() {
 
   useEffect(() => { fetchRoom(); fetchChannels(); return () => stopCamera(); }, [roomNumber]);
 
-  const fetchRoom = async () => { try { const { data } = await api.get(`/rooms/${roomNumber}`); setRoom(data); setForm(prev => ({ ...prev, rate_per_day: data.rate || 600 })); } catch (err) { console.error(err); } };
+  const fetchRoom = async () => { try { const { data } = await api.get(`/rooms/${roomNumber}`); setRoom(data); setForm(prev => ({ ...prev, rate_per_day: data.rate || 600 })); } catch (err) {} };
   const fetchChannels = async () => { try { const { data } = await api.get('/channels'); setChannels(data.filter(c => c.is_active)); } catch (err) {} };
 
   const startCamera = async (mode) => {
@@ -83,21 +49,27 @@ export default function CheckInPage() {
 
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) { stopCamera(); return; }
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
+    const canvas = canvasRef.current; const video = videoRef.current;
 
     if (cameraMode === 'aadhar') {
       canvas.width = 640; canvas.height = 480;
       canvas.getContext('2d').drawImage(video, 0, 0, 640, 480);
       const imgB64 = canvas.toDataURL('image/jpeg', 0.8);
       setForm(prev => ({ ...prev, aadhar_photo: imgB64 }));
+      if (errors.aadhar_photo) setErrors(prev => ({ ...prev, aadhar_photo: null }));
       stopCamera();
       runAIocr(imgB64);
     } else if (cameraMode === 'face') {
       canvas.width = 320; canvas.height = 240;
       canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
       setForm(prev => ({ ...prev, face_photo: canvas.toDataURL('image/jpeg', 0.7) }));
-      setFaceCaptured(true);
+      if (errors.face_photo) setErrors(prev => ({ ...prev, face_photo: null }));
+      stopCamera();
+    } else if (cameraMode === 'signature') {
+      canvas.width = 480; canvas.height = 320;
+      canvas.getContext('2d').drawImage(video, 0, 0, 480, 320);
+      setForm(prev => ({ ...prev, signature: canvas.toDataURL('image/jpeg', 0.8) }));
+      if (errors.signature) setErrors(prev => ({ ...prev, signature: null }));
       stopCamera();
     }
   };
@@ -108,46 +80,59 @@ export default function CheckInPage() {
       const { data } = await api.post('/ocr/aadhar', { image_base64: imageBase64 });
       if (data.success && data.data) {
         setForm(prev => ({ ...prev, guest_name: data.data.name || prev.guest_name, aadhar_number: data.data.aadhar_number || prev.aadhar_number, address: data.data.address || prev.address }));
-        setAadharCaptured(true);
-      } else { alert(lang === 'mr' ? 'OCR अयशस्वी - व्यक्तिचलितपणे भरा' : 'OCR failed - enter manually'); }
-    } catch (err) { alert(lang === 'mr' ? 'OCR त्रुटी' : 'OCR error - enter manually'); }
+      }
+    } catch (err) {}
     finally { setOcrProcessing(false); }
   };
 
   const validate = () => {
     const e = {};
-    if (!form.guest_name || form.guest_name.trim().length < 2) e.guest_name = lang === 'mr' ? 'नाव आवश्यक (किमान 2 अक्षरे)' : 'Name required (min 2 chars)';
-    const phoneDigits = (form.guest_phone || '').replace(/\D/g, '');
-    if (phoneDigits.length !== 10) e.guest_phone = lang === 'mr' ? 'फोन 10 अंकी असावा' : 'Phone must be 10 digits';
-    if (form.aadhar_number) {
-      const aadharDigits = form.aadhar_number.replace(/\D/g, '');
-      if (aadharDigits.length !== 12) e.aadhar_number = lang === 'mr' ? 'आधार 12 अंकी असावा' : 'Aadhar must be 12 digits';
-    }
+    if (!form.guest_name || form.guest_name.trim().length < 2) e.guest_name = lang === 'mr' ? 'नाव आवश्यक' : 'Name required (min 2 chars)';
+    const ph = (form.guest_phone || '').replace(/\D/g, '');
+    if (ph.length !== 10) e.guest_phone = lang === 'mr' ? 'फोन 10 अंकी' : 'Phone must be 10 digits';
+    if (form.aadhar_number) { const ad = form.aadhar_number.replace(/\D/g, ''); if (ad.length !== 12) e.aadhar_number = lang === 'mr' ? 'आधार 12 अंकी' : 'Aadhar must be 12 digits'; }
+    if (!form.face_photo) e.face_photo = lang === 'mr' ? 'फोटो आवश्यक' : 'Face photo required';
+    if (!form.aadhar_photo) e.aadhar_photo = lang === 'mr' ? 'आधार फोटो आवश्यक' : 'Aadhar photo required';
+    if (!form.signature) e.signature = lang === 'mr' ? 'सही फोटो आवश्यक' : 'Signature photo required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const addGuest = () => { setForm(prev => ({ ...prev, additional_guests: [...prev.additional_guests, { name: '', phone: '' }] })); };
-  const removeGuest = (idx) => { setForm(prev => ({ ...prev, additional_guests: prev.additional_guests.filter((_, i) => i !== idx) })); };
-  const updateGuest = (idx, field, val) => {
-    setForm(prev => ({ ...prev, additional_guests: prev.additional_guests.map((g, i) => i === idx ? { ...g, [field]: val } : g) }));
-  };
+  const addGuest = () => setForm(prev => ({ ...prev, additional_guests: [...prev.additional_guests, { name: '', phone: '' }] }));
+  const removeGuest = (i) => setForm(prev => ({ ...prev, additional_guests: prev.additional_guests.filter((_, idx) => idx !== i) }));
+  const updateGuest = (i, f, v) => setForm(prev => ({ ...prev, additional_guests: prev.additional_guests.map((g, idx) => idx === i ? { ...g, [f]: v } : g) }));
 
   const handleSubmit = async () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      await api.post('/bookings/checkin', {
-        room_number: parseInt(roomNumber), ...form,
-        whatsapp_number: sameAsMobile ? form.guest_phone : (form.whatsapp_number || form.guest_phone)
-      });
+      await api.post('/bookings/checkin', { room_number: parseInt(roomNumber), ...form, whatsapp_number: sameAsMobile ? form.guest_phone : (form.whatsapp_number || form.guest_phone) });
       navigate('/');
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Check-in failed');
-    } finally { setLoading(false); }
+    } catch (err) { alert(err.response?.data?.detail || 'Check-in failed'); }
+    finally { setLoading(false); }
   };
 
-  const updateField = (field, value) => { setForm(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
+  const updateField = (f, v) => { setForm(prev => ({ ...prev, [f]: v })); if (errors[f]) setErrors(prev => ({ ...prev, [f]: null })); };
+
+  const PhotoButton = ({ mode, photo, label, error }) => (
+    <div className="bg-white rounded-2xl border-2 border-zinc-200 p-3">
+      {photo ? (
+        <div className="relative h-20 rounded-xl overflow-hidden border-2 border-[#16A34A]">
+          <img src={photo} alt={label} className="w-full h-full object-cover" />
+          <button onClick={() => updateField(mode === 'aadhar' ? 'aadhar_photo' : mode === 'face' ? 'face_photo' : 'signature', null)}
+            className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs font-bold">X</button>
+        </div>
+      ) : (
+        <button onClick={() => startCamera(mode)}
+          className={`w-full h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 font-bold active:scale-95 ${error ? 'border-red-400 bg-red-50 text-red-600' : 'border-zinc-300 bg-zinc-50 text-zinc-600'}`}
+          data-testid={`start-${mode}-btn`}>
+          {mode === 'signature' ? <PencilLine size={22} weight="bold" /> : mode === 'aadhar' ? <IdentificationCard size={22} weight="bold" /> : <Camera size={22} weight="bold" />}
+          <span className="text-[10px]">{label} *</span>
+        </button>
+      )}
+      {error && <p className="text-[10px] text-red-500 mt-1 font-bold text-center">{error}</p>}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#F4F4F5] pb-24" data-testid="checkin-page">
@@ -176,7 +161,9 @@ export default function CheckInPage() {
         {/* Camera View */}
         {showCamera && (
           <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4 space-y-3">
-            <label className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500">{cameraMode === 'face' ? (lang === 'mr' ? 'फोटो काढा' : 'Face Photo') : t('scan_aadhar')}</label>
+            <label className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500">
+              {cameraMode === 'face' ? (lang === 'mr' ? 'चेहरा फोटो' : 'Face Photo') : cameraMode === 'signature' ? (lang === 'mr' ? 'सही फोटो' : 'Signature Photo') : (lang === 'mr' ? 'आधार स्कॅन' : 'Aadhar Scan')}
+            </label>
             <div className="relative rounded-xl overflow-hidden bg-black aspect-video"><video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" /></div>
             <div className="grid grid-cols-2 gap-3">
               <button onClick={capturePhoto} className="h-14 rounded-xl bg-[#22C55E] text-white font-bold flex items-center justify-center gap-2 active:scale-95" data-testid="capture-btn"><Camera size={20} weight="bold" /> {t('capture_photo')}</button>
@@ -185,26 +172,21 @@ export default function CheckInPage() {
           </div>
         )}
 
-        {/* Aadhar + Face Buttons */}
+        {/* Photo Captures: Aadhar + Face + Signature */}
         {!showCamera && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-2xl border-2 border-zinc-200 p-3">
-              {ocrProcessing ? (
-                <div className="h-20 rounded-xl bg-blue-50 border-2 border-blue-200 flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" /><span className="text-sm font-bold text-blue-700">OCR...</span></div>
-              ) : (
-                <button onClick={() => startCamera('aadhar')} className={`w-full h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 font-bold active:scale-95 ${aadharCaptured ? 'border-[#16A34A] bg-[#DCFCE7] text-[#14532D]' : 'border-zinc-300 bg-zinc-50 text-zinc-600'}`} data-testid="start-aadhar-btn">
-                  <IdentificationCard size={24} weight="bold" /><span className="text-xs">{aadharCaptured ? (lang === 'mr' ? 'आधार स्कॅन' : 'Scanned') : (lang === 'mr' ? 'आधार स्कॅन' : 'Scan Aadhar')}</span>
-                </button>
-              )}
+          <>
+            {ocrProcessing && (
+              <div className="h-14 rounded-xl bg-blue-50 border-2 border-blue-200 flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                <span className="text-sm font-bold text-blue-700">{lang === 'mr' ? 'आधार वाचत आहे...' : 'Reading Aadhar...'}</span>
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-3">
+              <PhotoButton mode="aadhar" photo={form.aadhar_photo} label={lang === 'mr' ? 'आधार' : 'Aadhar'} error={errors.aadhar_photo} />
+              <PhotoButton mode="face" photo={form.face_photo} label={lang === 'mr' ? 'चेहरा' : 'Face'} error={errors.face_photo} />
+              <PhotoButton mode="signature" photo={form.signature} label={lang === 'mr' ? 'सही' : 'Signature'} error={errors.signature} />
             </div>
-            <div className="bg-white rounded-2xl border-2 border-zinc-200 p-3">
-              {faceCaptured && form.face_photo ? (
-                <div className="relative h-20 rounded-xl overflow-hidden border-2 border-[#16A34A]"><img src={form.face_photo} alt="Face" className="w-full h-full object-cover" /><button onClick={() => { setFaceCaptured(false); updateField('face_photo', null); }} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs font-bold">X</button></div>
-              ) : (
-                <button onClick={() => startCamera('face')} className="w-full h-20 rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 text-zinc-600 flex flex-col items-center justify-center gap-1 font-bold active:scale-95" data-testid="start-face-btn"><Camera size={24} weight="bold" /><span className="text-xs">{lang === 'mr' ? 'फोटो' : 'Face Photo'}</span></button>
-              )}
-            </div>
-          </div>
+          </>
         )}
 
         {/* Guest Details */}
@@ -213,40 +195,34 @@ export default function CheckInPage() {
           <div>
             <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('guest_name')} *</label>
             <input type="text" value={form.guest_name} onChange={e => updateField('guest_name', e.target.value)}
-              className={`w-full h-14 px-4 rounded-xl border-2 text-lg font-medium focus:outline-none ${errors.guest_name ? 'border-red-400 focus:border-red-500' : 'border-zinc-200 focus:border-zinc-900'}`} data-testid="guest-name-input" />
+              className={`w-full h-14 px-4 rounded-xl border-2 text-lg font-medium focus:outline-none ${errors.guest_name ? 'border-red-400' : 'border-zinc-200 focus:border-zinc-900'}`} data-testid="guest-name-input" />
             {errors.guest_name && <p className="text-xs text-red-500 mt-1 font-bold">{errors.guest_name}</p>}
           </div>
           <div>
             <label className="text-xs font-bold text-zinc-400 mb-1 block">{lang === 'mr' ? 'प्राथमिक फोन' : 'Primary Phone'} *</label>
             <input type="tel" value={form.guest_phone} onChange={e => updateField('guest_phone', e.target.value)} maxLength={10}
-              className={`w-full h-14 px-4 rounded-xl border-2 text-lg font-medium focus:outline-none ${errors.guest_phone ? 'border-red-400 focus:border-red-500' : 'border-zinc-200 focus:border-zinc-900'}`} data-testid="guest-phone-input" />
+              className={`w-full h-14 px-4 rounded-xl border-2 text-lg font-medium focus:outline-none ${errors.guest_phone ? 'border-red-400' : 'border-zinc-200 focus:border-zinc-900'}`} data-testid="guest-phone-input" />
             {errors.guest_phone && <p className="text-xs text-red-500 mt-1 font-bold">{errors.guest_phone}</p>}
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold text-zinc-400">{lang === 'mr' ? 'WhatsApp नंबर' : 'WhatsApp Number'}</label>
+              <label className="text-xs font-bold text-zinc-400">WhatsApp</label>
               <label className="flex items-center gap-2 cursor-pointer" data-testid="same-as-mobile">
-                <input type="checkbox" checked={sameAsMobile} onChange={e => { setSameAsMobile(e.target.checked); if (e.target.checked) updateField('whatsapp_number', form.guest_phone); }}
-                  className="w-5 h-5 rounded border-2 border-zinc-300" />
+                <input type="checkbox" checked={sameAsMobile} onChange={e => { setSameAsMobile(e.target.checked); if (e.target.checked) updateField('whatsapp_number', form.guest_phone); }} className="w-5 h-5 rounded border-2 border-zinc-300" />
                 <span className="text-xs font-bold text-zinc-500">{lang === 'mr' ? 'मोबाइल सारखाच' : 'Same as Mobile'}</span>
               </label>
             </div>
-            {!sameAsMobile && (
-              <input type="tel" value={form.whatsapp_number} onChange={e => updateField('whatsapp_number', e.target.value)}
-                placeholder={lang === 'mr' ? 'वेगळा असल्यास भरा' : 'If different from primary'}
-                className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="whatsapp-number-input" />
-            )}
+            {!sameAsMobile && <input type="tel" value={form.whatsapp_number} onChange={e => updateField('whatsapp_number', e.target.value)} placeholder={lang === 'mr' ? 'वेगळा असल्यास' : 'If different'} className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="whatsapp-number-input" />}
           </div>
           <div>
             <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('aadhar')} *</label>
             <input type="text" value={form.aadhar_number} onChange={e => updateField('aadhar_number', e.target.value)}
-              className={`w-full h-14 px-4 rounded-xl border-2 text-lg font-medium focus:outline-none ${errors.aadhar_number ? 'border-red-400 focus:border-red-500' : 'border-zinc-200 focus:border-zinc-900'}`} placeholder="XXXX XXXX XXXX" data-testid="aadhar-input" />
+              className={`w-full h-14 px-4 rounded-xl border-2 text-lg font-medium focus:outline-none ${errors.aadhar_number ? 'border-red-400' : 'border-zinc-200 focus:border-zinc-900'}`} placeholder="XXXX XXXX XXXX" data-testid="aadhar-input" />
             {errors.aadhar_number && <p className="text-xs text-red-500 mt-1 font-bold">{errors.aadhar_number}</p>}
           </div>
           <div>
             <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('address')}</label>
-            <input type="text" value={form.address} onChange={e => updateField('address', e.target.value)}
-              className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="address-input" />
+            <input type="text" value={form.address} onChange={e => updateField('address', e.target.value)} className="w-full h-14 px-4 rounded-xl border-2 border-zinc-200 text-lg font-medium focus:border-zinc-900 focus:outline-none" data-testid="address-input" />
           </div>
           <div>
             <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('num_guests')}</label>
@@ -267,30 +243,13 @@ export default function CheckInPage() {
           {form.additional_guests.map((g, i) => (
             <div key={i} className="flex gap-2 items-start" data-testid={`additional-guest-${i}`}>
               <div className="flex-1 space-y-2">
-                <input type="text" value={g.name} onChange={e => updateGuest(i, 'name', e.target.value)} placeholder={lang === 'mr' ? 'नाव' : 'Name'}
-                  className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-medium focus:border-zinc-900 focus:outline-none" data-testid={`extra-guest-name-${i}`} />
-                <input type="tel" value={g.phone} onChange={e => updateGuest(i, 'phone', e.target.value)} placeholder={lang === 'mr' ? 'फोन' : 'Phone'}
-                  className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-medium focus:border-zinc-900 focus:outline-none" data-testid={`extra-guest-phone-${i}`} />
+                <input type="text" value={g.name} onChange={e => updateGuest(i, 'name', e.target.value)} placeholder={lang === 'mr' ? 'नाव' : 'Name'} className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-medium focus:border-zinc-900 focus:outline-none" />
+                <input type="tel" value={g.phone} onChange={e => updateGuest(i, 'phone', e.target.value)} placeholder={lang === 'mr' ? 'फोन' : 'Phone'} className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-medium focus:border-zinc-900 focus:outline-none" />
               </div>
               <button onClick={() => removeGuest(i)} className="w-10 h-10 rounded-xl border-2 border-red-200 flex items-center justify-center active:scale-95 mt-1"><X size={16} weight="bold" className="text-red-500" /></button>
             </div>
           ))}
-          {form.additional_guests.length === 0 && <p className="text-xs text-zinc-400">{lang === 'mr' ? 'ग्रुपसाठी अतिरिक्त पाहुण्यांची माहिती जोडा' : 'Add extra guest details for groups'}</p>}
-        </div>
-
-        {/* Signature */}
-        <div className="bg-white rounded-2xl border-2 border-zinc-200 p-4">
-          <label className="text-xs uppercase tracking-[0.1em] font-bold text-zinc-500 mb-3 flex items-center gap-1 block">
-            <PencilLine size={14} weight="bold" /> {lang === 'mr' ? 'सही' : 'Signature'}
-          </label>
-          {signatureSaved && form.signature ? (
-            <div className="relative">
-              <img src={form.signature} alt="Signature" className="w-full h-20 object-contain border-2 border-[#16A34A] rounded-xl bg-white" data-testid="signature-preview" />
-              <button onClick={() => { setSignatureSaved(false); updateField('signature', null); }} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs font-bold">X</button>
-            </div>
-          ) : (
-            <SignaturePad lang={lang} onSave={(sig) => { updateField('signature', sig); setSignatureSaved(true); }} />
-          )}
+          {form.additional_guests.length === 0 && <p className="text-xs text-zinc-400">{lang === 'mr' ? 'ग्रुपसाठी अतिरिक्त पाहुणे जोडा' : 'Add extra guests for groups'}</p>}
         </div>
 
         {/* Payment */}
@@ -299,13 +258,11 @@ export default function CheckInPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('rate_per_day')}</label>
-              <input type="number" value={form.rate_per_day} onChange={e => updateField('rate_per_day', parseFloat(e.target.value) || 0)}
-                className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-bold focus:border-zinc-900 focus:outline-none" data-testid="rate-input" />
+              <div className="flex items-center h-12 px-3 rounded-xl border-2 border-zinc-200"><span className="text-lg font-bold text-zinc-400 mr-1">₹</span><input type="number" value={form.rate_per_day} onChange={e => updateField('rate_per_day', parseFloat(e.target.value) || 0)} className="flex-1 h-full font-bold text-lg focus:outline-none" data-testid="rate-input" /></div>
             </div>
             <div>
               <label className="text-xs font-bold text-zinc-400 mb-1 block">{t('advance_paid')}</label>
-              <input type="number" value={form.advance_paid} onChange={e => updateField('advance_paid', parseFloat(e.target.value) || 0)}
-                className="w-full h-12 px-3 rounded-xl border-2 border-zinc-200 font-bold focus:border-zinc-900 focus:outline-none" data-testid="advance-input" />
+              <div className="flex items-center h-12 px-3 rounded-xl border-2 border-zinc-200"><span className="text-lg font-bold text-zinc-400 mr-1">₹</span><input type="number" value={form.advance_paid || ''} onChange={e => updateField('advance_paid', parseFloat(e.target.value) || 0)} placeholder="₹" className="flex-1 h-full font-bold text-lg focus:outline-none" data-testid="advance-input" /></div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -314,10 +271,7 @@ export default function CheckInPage() {
           </div>
         </div>
 
-        {/* Rules + WhatsApp Info */}
-        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3">
-          <p className="text-xs font-bold text-amber-700">{lang === 'mr' ? 'चेक-इन/आउट: 12 PM · 24h+ = पूर्ण दिवस · लवकर आगमन = ₹500' : 'Check-in/out: 12 PM · 24h+ overstay = full day · Early = ₹500'}</p>
-        </div>
+        {/* Info */}
         <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-3">
           <p className="text-xs font-bold text-green-700">{lang === 'mr' ? 'स्वागत + WiFi + नियम WhatsApp वर पाठवले जातील' : 'Welcome + WiFi + Rules auto-sent via WhatsApp'}</p>
         </div>

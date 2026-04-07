@@ -52,9 +52,9 @@ export default function DashboardPage() {
 
   const handleFreshService = async (roomNumber) => {
     try {
-      await api.post('/bookings/fresh', { room_number: roomNumber, num_people: freshForm.num_people, payment_method: freshForm.payment_method });
+      await api.post('/bookings/fresh', { room_number: roomNumber, num_people: freshForm.num_people, payment_method: freshForm.payment_method, rate_per_person: parseFloat(freshForm.rate_per_person) || 200 });
       setShowFresh(null);
-      setFreshForm({ num_people: 1, payment_method: 'cash' });
+      setFreshForm({ num_people: 1, payment_method: 'cash', rate_per_person: 200 });
       fetchRooms();
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed');
@@ -146,15 +146,18 @@ export default function DashboardPage() {
       )}
 
       {/* Header */}
-      <div className="p-4 md:p-6">
+        <div className="p-4 md:p-6">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="font-heading text-2xl md:text-3xl font-bold tracking-tight text-zinc-900">
-              Nivant Lodge
-            </h1>
-            <p className="text-zinc-500 text-sm font-medium">
-              {t('welcome')}, {user?.name || 'User'}
-            </p>
+          <div className="flex items-center gap-3">
+            <img src="/nivant-logo.png" alt="Nivant Lodge" className="h-12 w-auto" />
+            <div>
+              <h1 className="font-heading text-2xl md:text-3xl font-bold tracking-tight text-zinc-900">
+                Nivant Lodge
+              </h1>
+              <p className="text-zinc-500 text-sm font-medium">
+                {t('welcome')}, {user?.name || 'User'}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -260,7 +263,15 @@ export default function DashboardPage() {
           <div className="fixed inset-0 bg-black/50 flex items-end z-50" onClick={() => setShowFresh(null)}>
             <div className="bg-white w-full rounded-t-3xl p-6 space-y-4" onClick={e => e.stopPropagation()} data-testid="fresh-modal">
               <p className="font-bold text-lg">{lang === 'mr' ? 'फ्रेश सर्व्हिस' : 'Fresh Service'} — {lang === 'mr' ? 'रूम' : 'Room'} {showFresh}</p>
-              <p className="text-sm text-zinc-500">{lang === 'mr' ? '30 मिनिटे · ₹200' : '30 minutes · ₹200'}</p>
+              <p className="text-sm text-zinc-500">{lang === 'mr' ? '30 मिनिटे' : '30 minutes'}</p>
+              <div>
+                <label className="text-xs font-bold text-zinc-400 mb-2 block">{lang === 'mr' ? 'दर प्रति व्यक्ती' : 'Rate Per Customer'}</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-zinc-400">₹</span>
+                  <input type="number" value={freshForm.rate_per_person} onChange={e => setFreshForm(p => ({...p, rate_per_person: e.target.value}))}
+                    className="flex-1 h-12 px-3 rounded-xl border-2 border-zinc-200 font-bold text-lg focus:border-zinc-900 focus:outline-none" data-testid="fresh-rate-input" />
+                </div>
+              </div>
               <div>
                 <label className="text-xs font-bold text-zinc-400 mb-2 block">{lang === 'mr' ? 'व्यक्तींची संख्या' : 'Number of People'}</label>
                 <div className="flex gap-2">
@@ -281,7 +292,7 @@ export default function DashboardPage() {
               </div>
               <button onClick={() => handleFreshService(showFresh)}
                 className="w-full h-14 rounded-xl bg-[#2563EB] text-white font-bold text-lg active:scale-95 transition-transform" data-testid="fresh-submit-btn">
-                {lang === 'mr' ? 'फ्रेश बुक करा · ₹200' : 'Book Fresh · ₹200'}
+                {lang === 'mr' ? 'बुक करा' : 'Submit'} · ₹{(parseFloat(freshForm.rate_per_person) || 200) * freshForm.num_people}
               </button>
             </div>
           </div>
