@@ -1918,8 +1918,6 @@ async def seed_hotel_settings():
         "hotel_rules": [
             "Check-in / Check-out time: 12:00 PM",
             "Overstay beyond 24 hours = full next day charge",
-            "Do NOT arrive before 12:00 PM",
-            "Early arrivals will be charged Rs.500 for temporary room until 12 PM",
             "No smoking in rooms",
             "Visitors not allowed after 10 PM",
             "ID proof required for all guests",

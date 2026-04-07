@@ -1,91 +1,49 @@
 # Nivant Lodge - Hotel Management System
 
-## Original Problem Statement
-Build a Marathi-first, mobile-optimized PWA Hotel Management System for Nivant Lodge, an Indian budget hotel with 22 rooms across 4 floors.
-
 ## Tech Stack
 - **Frontend**: React, Tailwind CSS, Shadcn UI, Phosphor Icons, PWA
 - **Backend**: FastAPI, Motor (Async MongoDB), JWT Auth
 - **Database**: MongoDB
+- **AI OCR**: GPT-4o vision via Emergent Integrations
 
 ## Room Inventory
 | Type | Rooms | Rate |
 |------|-------|------|
 | Standard | 101, 102, 201, 202, 203, 301, 302, 303 | ₹600/day |
-| Non-AC Deluxe | 103, 105, 106, 107 | ₹1000/day |
-| Non-AC Deluxe (Special) | 104 | ₹500/day |
+| Deluxe | 103, 105, 106, 107 | ₹1000/day |
+| Deluxe (Special) | 104 | ₹500/day |
 | AC Deluxe | 204, 205, 206, 304, 305, 306, 404, 405, 406 | ₹1200/day |
 
-## Completed Features
-
-### Phase 1 (Core)
-- [x] JWT Auth with role-based access (Owner/Staff)
-- [x] 22-room interactive dashboard with Traffic Light Logic
-- [x] Check-in/Check-out with Nivant Lodge billing rules
-- [x] Digital Galla (Cashbox) with expense tracking
-- [x] Mocked WhatsApp messaging engine
-- [x] Form C Export (CSV)
-- [x] Marathi-English language toggle
-- [x] PWA Manifest & IndexedDB setup
-
-### Phase 2 (Operations)
-- [x] Remote Cashbox for owners
-- [x] Shift Handover
-- [x] QR Digital Bell for guest requests
-
-### Phase 3 (Channel Manager)
-- [x] Full Channel Manager (5 tabs: Overview, Channels, Rates, Bookings, Sync)
-- [x] 5 OTA channels seeded (OYO, MakeMyTrip, Booking.com, Agoda, Goibibo)
-- [x] Booking Source tracking on check-in
-- [x] Owner Room Management (CRUD)
-- [x] Hotel Settings API (WiFi, rules, configurable by owner)
-
-### Phase 4 (Nivant Lodge Overhaul) - Feb 2026
-- [x] Room inventory restructured to Nivant Lodge layout (22 rooms, 3 types, 4 floors)
-- [x] Billing: 12 PM check-in/out, overstay = full day charge (NO grace period)
-- [x] Fresh Service (30 min, ₹200) with quick booking from dashboard
-- [x] Face photo capture at check-in (phone camera, stored as base64)
-- [x] Primary Phone + WhatsApp Number fields with "Copy from Primary" button
-- [x] Aadhaar stored unmasked (full number for Form C compliance)
-- [x] Voice button removed from Galla/Expenses
-- [x] Emergent branding removed (CSS hide)
-- [x] Hotel renamed to "Nivant Lodge" throughout
-- [x] Auto WhatsApp: Welcome + WiFi + Rules + Early arrival warning (₹500)
-- [x] Booking History endpoint with pagination
-
-### Phase 5 (Reservations) - Feb 2026
-- [x] Future booking/reservation system (reserve by room number + date)
-- [x] Guest search for returning customers (auto-fill from past bookings)
-- [x] Calendar view showing reservations (blue) and active bookings (red)
-- [x] List view with upcoming reservations and today's check-ins
-- [x] Advance payment at reservation time (cash/UPI)
-- [x] One-tap check-in from reservation
-- [x] Cancel reservation
-- [x] WhatsApp booking confirmation auto-sent
-- [x] Double-booking prevention (same room + same date blocked)
-- [x] Booking source selector on reservations
+## All Completed Features
+- JWT Auth (Owner/Staff roles), 22-room dashboard with Traffic Light Logic
+- Check-in/Check-out with Nivant Lodge billing (12 PM, no grace overstay)
+- **Check-in validation**: Name (min 2 chars), Phone (10 digits), Aadhar (12 digits)
+- **Additional guests**: Add multiple guest names+phones for group check-ins
+- **Face photo capture**: Phone camera at check-in
+- **Aadhar photo storage**: Card image stored in DB
+- **Signature capture**: Draw-on-screen signature pad, stored as base64
+- **"Same as Mobile" checkbox** for WhatsApp number
+- **AI-powered Aadhar OCR**: GPT-4o reads card → auto-fills name, number, address
+- **Early arrival warning**: Only sent to channel manager bookings (not walk-ins)
+- Fresh Service (30 min, ₹200) with num_people + payment method
+- Digital Galla, Shift Handover, Remote Cashbox
+- **Send Bill on WhatsApp** (replaced Print Invoice)
+- Full Channel Manager (5 tabs), 5 OTA channels
+- Future Reservations with calendar + list views, guest search
+- Form C Export with **date range filter** (From/To)
+- Room Management (Standard/Deluxe/AC Deluxe)
+- Booking History API, QR Digital Bell
+- PWA, Marathi/English toggle, Emergent branding removed
 
 ## Policies
-- Check-in/out: 12:00 PM
-- Overstay: >24h = full day charge, no grace
-- Early arrival: Before 12 PM = ₹500 temporary room
-- Fresh Service: 30 min, ₹200
+- Check-in/out: 12:00 PM | Overstay: >24h = full day | Early arrival (channel only): ₹500 | Fresh: 30 min ₹200
 
-## Mocked Integrations
-- WhatsApp Business API (logged to DB)
-- OTA Channel Sync (simulated bookings)
+## Mocked: WhatsApp API, OTA Sync | Real: Aadhar OCR (GPT-4o)
 
-## Real Integrations
-- Aadhar OCR: AI-powered using GPT-4o vision (reads name, number, address from card image)
-
-## Backlog / Future Tasks
-- P1: AC room allocation logic (≤2 guests → 205/305/405, >2 → 204/206/304/306/404/406)
-- P1: Room conversion (AC → Non-AC toggle)
-- P1: Future booking sync to OTAs (when reserved, block on external platforms)
-- P1: Communication status tracking ("Delivered"/"Failed") + dashboard flag
-- P1: Manual resend WhatsApp button if undelivered
-- P2: Real Meta WhatsApp API integration
-- P2: Real Aadhar OCR integration
-- P2: Hide room numbers from booking platform display
-- P2: Check-in/Check-out history page (permanent ledger UI)
+## Backlog
+- P1: AC room allocation logic, Room conversion (AC→Non-AC)
+- P1: Communication status tracking + manual WhatsApp resend
+- P1: Data backup (cloud every 15 days, monthly download)
+- P2: Real WhatsApp API, Google Sheets export for police
+- P2: Self-hosting guide + deployment documentation
 - P3: Backend refactoring (server.py → modular routers)
